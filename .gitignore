@@ -1,0 +1,6 @@
+.env
+*.exe
+*.test
+/bin/
+.antigravitycli/
+/verify_drive
