@@ -1,0 +1,33 @@
+syntax = "proto3";
+
+package record;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/qei-2027-700/go-drive-etl/internal/pb";
+
+enum SyncStatus {
+  SYNC_STATUS_UNSPECIFIED = 0;
+  SYNC_STATUS_PENDING = 1;
+  SYNC_STATUS_PROCESSING = 2;
+  SYNC_STATUS_DONE = 3;
+  SYNC_STATUS_FAILED = 4;
+}
+
+// パイプラインを流れる Driveファイルの型
+message FileRecord {
+  string drive_file_id = 1;
+  string path = 2;
+  string checksum = 3;
+  string mime_type = 4;
+  SyncStatus sync_status = 5;
+  google.protobuf.Timestamp updated_at = 6;
+}
+
+// ファイルを分割したチャンクの型
+message ChunkRecord {
+  string file_id = 1;
+  int32 chunk_index = 2;
+  string content = 3;
+  string embedding_status = 4;
+}
