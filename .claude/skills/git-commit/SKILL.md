@@ -1,6 +1,8 @@
 ---
 name: git-commit
 description: 変更をステージしてConventional Commits形式でコミットする。ユーザーが「git-commit」「コミットして」「変更をコミット」などと言ったときに使う。
+argument-hint: "[issue-number]"
+allowed-tools: Bash
 ---
 
 # git-commit スキル
@@ -16,13 +18,22 @@ git status
 git diff --stat
 ```
 
-### 2. 変更をステージする
+### 2. secrets チェック
+
+以下のパターンに一致するファイルがステージ対象に含まれていないか確認する。
+含まれている場合は**即座に中断**してユーザーに報告する。
+
+```bash
+git status --short | grep -E '\.env|\.pem|\.key|credentials|secret|token'
+```
+
+### 3. 変更をステージする
 
 ```bash
 git add -A
 ```
 
-### 3. コミットメッセージを作成してコミットする
+### 4. コミットメッセージを作成してコミットする
 
 差分を元に Conventional Commits 形式のメッセージを生成する。
 
@@ -32,7 +43,7 @@ git commit -m "$(cat <<'EOF'
 
 <body（任意）>
 
-Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+Generated-by: `git-commit` skill
 EOF
 )"
 ```
@@ -53,6 +64,6 @@ Issue を閉じる場合は body に `Closes #<N>` を含める。
 
 ## 注意
 
-- `go build ./...` が通っていることを確認してからコミットする
-- `.env` や secrets を含むファイルは絶対にステージしない
+- **禁止**: `.env` や secrets を含むファイルのステージ
+- **禁止**: `go build ./...` が失敗している状態でのコミット
 - 1コミット1論理変更を心がける

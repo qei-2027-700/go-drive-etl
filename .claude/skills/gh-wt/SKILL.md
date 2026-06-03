@@ -1,6 +1,8 @@
 ---
 name: gh-wt
 description: Issue番号からfeatureブランチとgit worktreeを作成する。ユーザーが「gh-wt」「worktreeを作って」「ブランチとworktreeを切って」などと言ったときに使う。
+argument-hint: <issue-number>
+allowed-tools: Bash
 ---
 
 # gh-wt スキル

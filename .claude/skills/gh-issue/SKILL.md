@@ -1,6 +1,7 @@
 ---
 name: gh-issue
 description: GitHub Issue を起票する。ユーザーが「gh-issue」「issueを作って」「issue起票して」などと言ったときに使う。
+allowed-tools: Bash
 ---
 
 # gh-issue スキル
@@ -49,4 +50,4 @@ EOF
 
 - タイトルは動詞から始める（例: `Implement Worker Pool`, `Fix ListPending bug`）
 - 完了条件は PR マージ時に `Closes #<番号>` で自動クローズされる前提で書く
-- ラベルが存在しない場合は `gh label create --repo qei-2027-700/go-drive-etl` で先に作成する
+- ラベルが存在しない場合は `gh label create --repo qei-2027-700/go-drive-etl` で先に作成してから起票する

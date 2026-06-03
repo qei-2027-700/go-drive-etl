@@ -1,6 +1,8 @@
 ---
 name: gh-merge
 description: PRのCIが通ったらsquash mergeしてworktreeとブランチを削除する。ユーザーが「gh-merge」「マージして」「PRをマージして」などと言ったときに使う。
+argument-hint: <pr-number>
+allowed-tools: Bash
 ---
 
 # gh-merge スキル
@@ -55,6 +57,6 @@ git pull origin main
 
 ## 注意
 
-- CI が `fail` の場合はマージしない。原因をユーザーに伝えて修正を促す
+- **禁止**: CI が `fail` の状態でのマージ。原因をユーザーに伝えて修正を促す
 - `--delete-branch` でリモートブランチも自動削除される
 - worktree 削除は `/Users/km/dev/_github/go-drive-etl/` で実行する（worktree 内からは削除できない）

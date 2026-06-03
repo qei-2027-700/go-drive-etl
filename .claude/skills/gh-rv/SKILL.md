@@ -1,6 +1,8 @@
 ---
 name: gh-rv
 description: GitHub Pull Request をレビューする。ユーザーが「gh-rv」「PRをレビューして」「このPRを見て」などと言ったときに使う。
+argument-hint: <pr-number>
+allowed-tools: Bash
 ---
 
 # gh-rv スキル
@@ -47,4 +49,4 @@ gh pr review <PR番号> --repo qei-2027-700/go-drive-etl --request-changes --bod
 ## 注意
 
 - Dependabot PR はバージョンアップのみなので CI が green なら基本 approve
-- `workflow` スコープがない場合は Actions ファイルの変更を含む PR はマージできないため、GitHub UI 上で手動マージを案内する
+- Actions ファイルの変更を含む PR は GitHub UI から手動マージする（`workflow` スコープが必要なため）

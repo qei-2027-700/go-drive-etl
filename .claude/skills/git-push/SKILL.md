@@ -1,6 +1,7 @@
 ---
 name: git-push
 description: 現在のブランチをリモートにpushする。ユーザーが「git-push」「pushして」「リモートに上げて」などと言ったときに使う。
+allowed-tools: Bash
 ---
 
 # git-push スキル
@@ -45,6 +46,6 @@ push 完了:
 
 ## 注意
 
-- `--force` および `--force-with-lease` は main/master ブランチには使わない
+- **禁止**: main/master ブランチへの `--force` および `--force-with-lease`
 - push 前に `git log --oneline origin/<branch>..HEAD` でローカル先行コミットを確認する
 - CI が自動起動する場合は `gh run list --repo qei-2027-700/go-drive-etl` で確認できる
