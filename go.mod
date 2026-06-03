@@ -1,6 +1,6 @@
 module github.com/qei-2027-700/go-drive-etl
 
-go 1.26.3
+go 1.26.4
 
 require (
 	cloud.google.com/go v0.123.0 // indirect
