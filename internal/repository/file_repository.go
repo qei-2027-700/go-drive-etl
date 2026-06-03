@@ -11,6 +11,12 @@ type FileRepository struct {
 	db *pgxpool.Pool
 }
 
+type FileRepo interface {
+	ListPending(ctx context.Context) ([]*domain.File, error)
+	UpdateStatus(ctx context.Context, fileID int64, status domain.SyncStatus) error
+	Upsert(ctx context.Context, f *domain.File) error
+}
+
 func NewFileRepository(db *pgxpool.Pool) *FileRepository {
 	return &FileRepository{db: db}
 }
