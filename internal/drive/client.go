@@ -14,6 +14,10 @@ type Client struct {
 	svc *driveapi.Service
 }
 
+type DriveClient interface {
+	ListFiles(ctx context.Context, folderID string) ([]*driveapi.File, error)
+}
+
 func NewClient(ctx context.Context) (*Client, error) {
 	conf := &oauth2.Config{
 		ClientID:     os.Getenv("GOOGLE_CLIENT_ID"),

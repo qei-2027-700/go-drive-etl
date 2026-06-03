@@ -31,28 +31,35 @@ gh pr checks --repo qei-2027-700/go-drive-etl
 gh pr merge --repo qei-2027-700/go-drive-etl --squash --delete-branch
 ```
 
-### 4. worktree を削除する
+### 4. worktree を削除する（worktree がある場合のみ）
 
 ```bash
 # main ブランチのツリーに戻ってから削除
 cd /Users/km/dev/_github/go-drive-etl
 git worktree remove ../go-drive-etl-feature-<N> --force
+```
+
+### 5. main に切り替えてローカルブランチを削除する
+
+```bash
+git checkout main
+git branch -d <branch-name>
 git fetch origin --prune
 ```
 
-### 5. main を最新化する
+### 6. main を最新化する
 
 ```bash
 git pull origin main
 ```
 
-### 6. 完了を報告する
+### 7. 完了を報告する
 
 ```
 マージ完了:
   PR     : #<N>
-  Branch : feature/issue-<N>-<slug> (削除済み)
-  worktree: ../go-drive-etl-feature-<N>/ (削除済み)
+  Branch : feature/issue-<N>-<slug> (ローカル・リモート削除済み)
+  worktree: ../go-drive-etl-feature-<N>/ (削除済み・該当する場合)
 ```
 
 ## 注意
