@@ -9,6 +9,10 @@ import (
 	"cloud.google.com/go/bigquery"
 )
 
+type BQClient interface {
+	InsertRows(ctx context.Context, table string, rows []map[string]bigquery.Value) error
+}
+
 type Client struct {
 	bq      *bigquery.Client
 	dataset string
