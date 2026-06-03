@@ -22,7 +22,7 @@ func (m *mockBQClient) InsertRows(ctx context.Context, table string, rows []map[
 	return m.returnErr
 }
 
-func TestMockBQClient_IsertRows(t *testing.T) {
+func TestMockBQClient_InsertRows(t *testing.T) {
 	mock := &mockBQClient{}
 
 	rows := []map[string]bigquery.Value{
@@ -36,7 +36,7 @@ func TestMockBQClient_IsertRows(t *testing.T) {
 		t.Fatalf("expected no error, got %v", err)
 	}
 	if !mock.insertRowsCalled {
-
+		t.Error("InsertRows が呼ばれていない")
 	}
 	if mock.lastTable != "my_table" {
 		t.Errorf("expected table 'my_table', got %s", mock.lastTable)
