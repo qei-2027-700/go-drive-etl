@@ -10,11 +10,20 @@ import (
 	"github.com/qei-2027-700/go-drive-etl/internal/repository"
 )
 
+type WorkerPool interface {
+	Run(
+		ctx context.Context,
+		repo repository.FileRepo,
+		driveClient drive.DriveClient,
+		bqClient bq.BQClient,
+	) error
+}
+
 func Run(
 	ctx context.Context,
-	repo *repository.FileRepository,
-	driveClient *drive.Client,
-	bqClient *bq.Client,
+	repo repository.FileRepo,
+	driveClient drive.DriveClient,
+	bqClient bq.BQClient,
 ) error {
 	//
 	files, err := repo.ListPending(ctx)
