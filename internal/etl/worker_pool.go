@@ -60,7 +60,13 @@ func Run(
 
 	// 4. ファイルをキューに入れる
 	for _, f := range files {
-		jobs <- f
+		select {
+		case jobs <- f:
+		case <-ctx.Done():
+			close(jobs)
+			wg.Wait()
+			return ctx.Err()
+		}
 	}
 	close(jobs)
 
