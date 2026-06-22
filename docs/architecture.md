@@ -114,8 +114,51 @@ iac/
 
 ---
 
-## 将来の AI Ready 構成 (拡張ロードマップ)
+## ロードマップ
+
+### Phase 1 — AI-Ready Pipeline（現在進行中）
+
+Drive に置いた Notion 週次振り返り MD を取り込み、BigQuery にチャンク単位で格納するところまでを完成させる。
 
 ```
-Drive → Go Worker → Chunking → Embedding (Proto/gRPC) → BigQuery Vector Search → RAG / LLM
+Notion MD (手動アップロード)
+    ↓
+Google Drive /raw-inputs/
+    ↓ go-drive-etl スキャン
+Go Worker（ETL）
+    ├─ PostgreSQL（状態管理・重複排除）
+    └─ BigQuery
+         ├─ Raw 層: ファイルメタデータ
+         └─ Chunk 層: ChunkRecord（content, chunk_index）← ここまでが Phase 1
 ```
+
+**Phase 1 の完了条件**
+- [ ] MD パーサー実装（`internal/parser/md.go`）
+- [ ] `ChunkRecord` を BigQuery に格納するテーブル・ロジック実装
+- [ ] `cmd/worker` エントリーポイント完成（End-to-End 動作）
+- [ ] Pulumi で BQ テーブルを IaC 管理
+- [ ] `go test ./...` が通る状態を維持
+
+---
+
+### Phase 2 — RAG Agent（Phase 1 完了後）
+
+BigQuery に蓄積したチャンクを Vertex AI で埋め込み、Vector Search で検索可能にした上で、週次振り返りを参照できる RAG エージェントを構築する。データは GCP 内でクローズドに処理し、個人情報を外部 API に送出しない。
+
+```
+BigQuery Chunk 層
+    ↓
+Vertex AI Embeddings（GCP 内。外部 API 不使用）
+    ↓
+BigQuery Vector Search
+    ↓
+RAG Agent CLI
+    ↓
+LLMOps（評価・モデルバージョン管理）
+```
+
+**Phase 2 の完了条件**
+- [ ] Vertex AI Embeddings でチャンク埋め込みパイプライン実装
+- [ ] BigQuery Vector Search でセマンティック検索
+- [ ] 週次振り返りを参照できる RAG Agent CLI 動作
+- [ ] RAG 評価指標（Recall / Faithfulness）の計測
