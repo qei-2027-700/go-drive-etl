@@ -10,11 +10,20 @@ import (
 	"github.com/qei-2027-700/go-drive-etl/internal/repository"
 )
 
+type WorkerPool interface {
+	Run(
+		ctx context.Context,
+		repo repository.FileRepo,
+		driveClient drive.DriveClient,
+		bqClient bq.BQClient,
+	) error
+}
+
 func Run(
 	ctx context.Context,
-	repo *repository.FileRepository,
-	driveClient *drive.Client,
-	bqClient *bq.Client,
+	repo repository.FileRepo,
+	driveClient drive.DriveClient,
+	bqClient bq.BQClient,
 ) error {
 	//
 	files, err := repo.ListPending(ctx)
@@ -51,7 +60,13 @@ func Run(
 
 	// 4. ファイルをキューに入れる
 	for _, f := range files {
-		jobs <- f
+		select {
+		case jobs <- f:
+		case <-ctx.Done():
+			close(jobs)
+			wg.Wait()
+			return ctx.Err()
+		}
 	}
 	close(jobs)
 
