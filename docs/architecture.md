@@ -121,7 +121,8 @@ iac/
 Drive に置いた Notion 週次振り返り MD を取り込み、BigQuery にチャンク単位で格納するところまでを完成させる。
 
 ```
-Notion MD (手動アップロード)
+任意のファイル（MD / PDF / CSV / テキスト等）を手動アップロード
+  例: Notion 週次振り返り MD、議事録 PDF、データ CSV など
     ↓
 Google Drive /raw-inputs/
     ↓ go-drive-etl スキャン
@@ -133,7 +134,7 @@ Go Worker（ETL）
 ```
 
 **Phase 1 の完了条件**
-- [ ] MD パーサー実装（`internal/parser/md.go`）
+- [ ] ファイルパーサー実装（MD を優先、将来 PDF / CSV に拡張可能な設計）
 - [ ] `ChunkRecord` を BigQuery に格納するテーブル・ロジック実装
 - [ ] `cmd/worker` エントリーポイント完成（End-to-End 動作）
 - [ ] Pulumi で BQ テーブルを IaC 管理
