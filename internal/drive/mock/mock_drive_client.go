@@ -41,6 +41,21 @@ func (m *MockDriveClient) EXPECT() *MockDriveClientMockRecorder {
 	return m.recorder
 }
 
+// DownloadFile mocks base method.
+func (m *MockDriveClient) DownloadFile(ctx context.Context, fileID string) ([]byte, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DownloadFile", ctx, fileID)
+	ret0, _ := ret[0].([]byte)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// DownloadFile indicates an expected call of DownloadFile.
+func (mr *MockDriveClientMockRecorder) DownloadFile(ctx, fileID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DownloadFile", reflect.TypeOf((*MockDriveClient)(nil).DownloadFile), ctx, fileID)
+}
+
 // ListFiles mocks base method.
 func (m *MockDriveClient) ListFiles(ctx context.Context, folderID string) ([]*drive.File, error) {
 	m.ctrl.T.Helper()
