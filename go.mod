@@ -4,7 +4,7 @@ go 1.26.4
 
 require (
 	cloud.google.com/go/bigquery v1.77.0
-	github.com/jackc/pgx/v5 v5.9.2
+	github.com/jackc/pgx/v5 v5.10.0
 	github.com/joho/godotenv v1.5.1
 	go.uber.org/mock v0.6.0
 	golang.org/x/oauth2 v0.36.0
