@@ -2,6 +2,7 @@ package drive
 
 import (
 	"context"
+	"io"
 	"os"
 
 	"golang.org/x/oauth2"
@@ -16,6 +17,7 @@ type Client struct {
 
 type DriveClient interface {
 	ListFiles(ctx context.Context, folderID string) ([]*driveapi.File, error)
+	DownloadFile(ctx context.Context, fileID string) ([]byte, error)
 }
 
 func NewClient(ctx context.Context) (*Client, error) {
@@ -74,4 +76,20 @@ func (c *Client) ListFiles(ctx context.Context, folderID string) ([]*driveapi.Fi
 	}
 
 	return files, nil
+}
+
+// DownloadFile はバイナリファイル（PDF, CSV など）向け。
+// Google Workspace ファイル（Docs/Sheets/Slides）は Export API が必要（#28 参照）。
+func (c *Client) DownloadFile(ctx context.Context, fileID string) ([]byte, error) {
+	res, err := c.svc.Files.Get(fileID).Context(ctx).Download()
+	if err != nil {
+		return nil, err
+	}
+	defer res.Body.Close()
+
+	data, err := io.ReadAll(res.Body)
+	if err != nil {
+		return nil, err
+	}
+	return data, nil
 }
