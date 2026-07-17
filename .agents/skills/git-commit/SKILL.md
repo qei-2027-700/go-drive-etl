@@ -3,6 +3,8 @@ name: git-commit
 description: 変更をステージしてConventional Commits形式でコミットする。ユーザーが「git-commit」「コミットして」「変更をコミット」などと言ったときに使う。
 argument-hint: "[issue-number]"
 allowed-tools: Bash, Read
+model: haiku
+effort: medium
 ---
 
 # git-commit スキル

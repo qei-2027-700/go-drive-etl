@@ -2,6 +2,8 @@
 name: git-push
 description: 現在のブランチをリモートにpushする。ユーザーが「git-push」「pushして」「リモートに上げて」などと言ったときに使う。
 allowed-tools: Bash, Read
+model: haiku
+effort: low
 ---
 
 # git-push スキル

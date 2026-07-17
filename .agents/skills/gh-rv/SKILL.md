@@ -3,6 +3,8 @@ name: gh-rv
 description: GitHub Pull Request をレビューする。ユーザーが「gh-rv」「PRをレビューして」「このPRを見て」などと言ったときに使う。
 argument-hint: <pr-number>
 allowed-tools: Bash, Read
+# model はセッション継承（レビューは判断を伴うため固定しない）
+effort: high
 ---
 
 # gh-rv スキル

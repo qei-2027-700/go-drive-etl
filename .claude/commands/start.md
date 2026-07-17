@@ -1,3 +1,10 @@
+---
+description: Issue番号を受け取り、worktreeを作らず現在のディレクトリでブランチを切って開発フローを進める。
+argument-hint: <issue番号>
+# model は固定しない: /feature と同様、実装の主体はセッション本体なので issue の model: ラベルに
+# 合わせたセッションモデルを継承する。
+---
+
 # /start コマンド
 
 Issue 番号を受け取り、worktree を作成せずに現在のディレクトリでブランチを切って開発フローを進める。
