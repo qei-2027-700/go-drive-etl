@@ -2,6 +2,8 @@
 name: gh-memo
 description: 学習メモをGitHub Issue #26 にコメントとして追記する。ユーザーが「gh-memo」「memoして」「メモして」「issueに記録して」などと言ったときに使う。
 allowed-tools: Bash
+model: haiku
+effort: low
 ---
 
 # gh-memo スキル

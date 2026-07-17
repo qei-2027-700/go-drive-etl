@@ -2,6 +2,8 @@
 name: gh-issue
 description: GitHub Issue を起票する。ユーザーが「gh-issue」「issueを作って」「issue起票して」などと言ったときに使う。
 allowed-tools: Bash, Read
+model: sonnet
+effort: medium
 ---
 
 # gh-issue スキル

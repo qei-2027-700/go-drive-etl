@@ -3,6 +3,8 @@ name: gh-pr
 description: GitHub Pull Request を作成する。ユーザーが「gh-pr」「PRを作って」「プルリクエスト作成して」などと言ったときに使う。
 argument-hint: "[issue-number]"
 allowed-tools: Bash, Read
+model: sonnet
+effort: medium
 ---
 
 # gh-pr スキル
