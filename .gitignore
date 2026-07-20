@@ -4,3 +4,9 @@
 /bin/
 .antigravitycli/
 /verify_drive
+
+# Terraform
+iac/terraform.tfvars
+iac/.terraform/
+iac/*.tfstate
+iac/*.tfstate.backup
