@@ -1,7 +1,8 @@
 resource "google_bigquery_dataset" "etl" {
   dataset_id = var.dataset_id
   location   = var.location
-  default_table_expiration_ms = 5184000000
+  # 課金未設定のため 60 日上限（課金有効化後は削除可）
+  default_table_expiration_ms     = 5184000000
   default_partition_expiration_ms = 5184000000
 }
 

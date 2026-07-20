@@ -81,4 +81,4 @@ terraform apply
 docker compose up -d
 ```
 
-マイグレーションの実行方法は別途 `docs/architecture.md` を参照。
+マイグレーションの実行方法は未整備のため、今後 `docs/architecture.md` に追記予定。
