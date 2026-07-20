@@ -48,7 +48,7 @@ PostgreSQL (Docker)
 | データソース | Google Drive API v3 (OAuth2) |
 | DWH | BigQuery (GCP) |
 | 状態管理DB | PostgreSQL (Docker) |
-| IaC | Pulumi (Go) |
+| IaC | Terraform (Google Provider ~> 6.0) |
 | CI/CD | GitHub Actions |
 | セキュリティ | OSSF Scorecard / govulncheck / Dependabot |
 
@@ -119,7 +119,7 @@ go-drive-etl/
 │   └── repository/     # PostgreSQL リポジトリ
 ├── proto/              # Protocol Buffers 定義ファイル（実装予定）
 ├── migrations/         # DB マイグレーション SQL
-├── iac/                # Pulumi IaC（実装予定）
+├── iac/                # Terraform（BigQuery データセット / テーブル定義）
 └── docs/               # アーキテクチャ・設計ドキュメント
 ```
 
@@ -137,4 +137,4 @@ go-drive-etl/
 | 6 | Worker Pool (並行処理) | 🔲 |
 | 7 | BigQuery クライアント | ✅ |
 | 8 | ETL パイプライン統合 | 🔲 |
-| IaC | Pulumi (GCP リソース管理) | 🔲 |
+| IaC | Terraform (BigQuery データセット / テーブル) | ✅ |
