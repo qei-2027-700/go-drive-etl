@@ -81,14 +81,15 @@ func main() {
 	for _, f := range files {
 		rows = append(rows, map[string]bigquery.Value{
 			"drive_file_id": f.Id,
-			"name":          f.Name,
-			"mime_type":     f.MimeType,
+			"path":          f.Name,
 			"checksum":      f.Md5Checksum,
-			"ingested_at":   time.Now().UTC(),
+			"mime_type":     f.MimeType,
+			"sync_status":   string(domain.SyncStatusPending),
+			"updated_at":    time.Now().UTC(),
 		})
 	}
 
-	if err := bqClient.InsertRows(ctx, "files", rows); err != nil {
+	if err := bqClient.InsertRows(ctx, "drive_files", rows); err != nil {
 		log.Fatalf("BigQuery Insert 失敗: %v", err)
 	}
 
