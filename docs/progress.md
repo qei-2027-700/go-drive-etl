@@ -1,7 +1,7 @@
 # 進捗管理
 
 > GCP プロジェクト: **`go-drive-etl`**
-> 最終更新: **2026-08-29（実装状況と全面的に再同期）**
+> 最終更新: **2026-09-02（実装状況と全面的に再同期）**
 >
 > ⚠️ **このファイルは 2026-05-30 以降更新されておらず、実装が進んだのに「未着手」のままの項目が多数あった。**
 > ソースコードを確認して実態に合わせた。**次回以降、PRマージ時にこのファイルも更新すること。**
@@ -14,7 +14,7 @@
 
 | # | 残タスク | なぜ重要か |
 |:---:|:---|:---|
-| **8-1** | `cmd/worker/main.go`（作業中ブランチ `feature/issue-6-worker-entrypoint`） | **これが無いと「動くパイプライン」と言えない。** 部品はあるが通しで実行できない |
+| **8-1** | `cmd/worker/main.go`（Issue #6・未着手） | **これが無いと「動くパイプライン」と言えない。** 部品はあるが通しで実行できない |
 | **8-2** | Drive → Postgres → Proto → BQ の End-to-End 疎通 | 同上。**ポートフォリオとしての価値はここで決まる** |
 | 2-2 | `protoc` 生成手順が `Makefile` に無い | 生成物（`internal/pb/`）はあるが**再生成が再現できない** |
 | 1-2 | `internal/parser/` 未作成 | Issue #25（ファイルパーサ・チャンク化）が未着手のため |
@@ -98,7 +98,7 @@
 |:---:|:---|:---:|
 | 7-1 | GCP: BigQuery API 有効化 | ✅ |
 | 7-2 | GCP: BigQuery データセット作成 | 🚧 **Terraform で定義済み**（`iac/bigquery.tf`）。`apply` 済みかは要確認 |
-| 7-3 | `go get cloud.google.com/go/bigquery` | ✅ `v1.77.0` |
+| 7-3 | `go get cloud.google.com/go/bigquery` | ✅ `v1.81.0` |
 | 7-4 | `internal/bq/client.go` 作成 | ✅ `NewClient` / `InsertRows` / `Close` |
 
 ---
@@ -107,7 +107,7 @@
 
 | # | タスク | 状態 |
 |:---:|:---|:---:|
-| 8-1 | `cmd/worker/main.go` 作成 | ❌ **作業中**（ブランチ `feature/issue-6-worker-entrypoint`） |
+| 8-1 | `cmd/worker/main.go` 作成 | ❌ Issue #6（**Issue #63 の Firestore 移行完了後に着手**） |
 | 8-2 | Drive → Postgres → Proto → BQ の End-to-End 疎通 | ❌ |
 | 8-3 | Graceful Shutdown テスト | ❌ |
 
@@ -120,9 +120,6 @@
 | T-1 | `iac/main.tf` 作成 | ✅ |
 | T-2 | `iac/bigquery.tf`（データセット / テーブル定義） | ✅ |
 | T-3 | `iac/variables.tf` / `terraform.tfvars.example` | ✅ |
-
-> ⚠️ **Issue #7「Implement Pulumi IaC for GCP resources」は OPEN のままだが、実体は Terraform で実装済み**
-> （PR #53 / #54）。**Issue を閉じるか Terraform 前提に書き換えること。**
 
 ---
 
