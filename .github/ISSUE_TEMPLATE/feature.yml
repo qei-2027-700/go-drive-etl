@@ -1,0 +1,54 @@
+name: 機能実装 (Feature)
+description: 機能追加・実装タスク
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: background
+    attributes:
+      label: 背景
+      description: なぜこのタスクが必要か。docs/architecture.md の該当箇所があればリンクする。
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: スコープ
+      description: やること・やらないことを箇条書きで。
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: 完了条件
+      value: |
+        - [ ]
+        - [ ] go test ./... が通る
+    validations:
+      required: true
+  - type: dropdown
+    id: model
+    attributes:
+      label: Claude Code 実行モデル
+      description: 選択後、対応する `model:*` ラベルも issue に付与すること。
+      options:
+        - "sonnet — 通常の実装・テスト追加"
+        - "opus — 設計判断を伴うタスク"
+        - "haiku — 定型作業"
+    validations:
+      required: true
+  - type: dropdown
+    id: phase
+    attributes:
+      label: フェーズ
+      description: 対応する `phase:*` ラベルとマイルストーンも付与すること。
+      options:
+        - "Phase 1: AI-Ready Pipeline"
+        - "Phase 2: RAG Agent"
+        - "Phase 3: BI & Delivery"
+    validations:
+      required: true
+  - type: textarea
+    id: notes
+    attributes:
+      label: 実装方針メモ (任意)
+      description: 参考リンク、想定パッケージ、設計上の論点など。

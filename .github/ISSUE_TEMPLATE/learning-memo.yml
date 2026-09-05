@@ -1,0 +1,21 @@
+name: 学習メモ (Learning Memo)
+description: 実装から得た教訓・学習メモの蓄積
+labels: ["memo", "documentation"]
+body:
+  - type: textarea
+    id: context
+    attributes:
+      label: きっかけ
+      description: どの issue / 実装で得た学びか（#番号でリンク）。
+    validations:
+      required: true
+  - type: textarea
+    id: lesson
+    attributes:
+      label: 教訓・学んだこと
+    validations:
+      required: true
+  - type: textarea
+    id: refs
+    attributes:
+      label: 参考リンク (任意)
