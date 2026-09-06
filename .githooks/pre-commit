@@ -1,5 +1,7 @@
 #!/bin/sh
 # ステージされた Go ファイルに gofmt を適用し、整形結果を再ステージする。
+# ステージ外の変更を巻き込まないよう、ワーキングツリーとステージ内容が一致する
+# ファイルだけを自動整形する（git add -p による部分ステージなどはコミットを中止する）。
 # 有効化: git config core.hooksPath .githooks
 set -eu
 
@@ -8,22 +10,41 @@ if ! command -v gofmt >/dev/null 2>&1; then
 	exit 1
 fi
 
-files=$(git diff --cached --name-only --diff-filter=ACMR -- '*.go')
-if [ -z "$files" ]; then
-	exit 0
-fi
-
 formatted=""
-for f in $files; do
-	# ステージ後に削除された等でファイルが無い場合はスキップ
-	[ -f "$f" ] || continue
-	if [ -n "$(gofmt -l "$f")" ]; then
-		gofmt -w "$f"
-		git add "$f"
-		formatted="$formatted $f"
+skipped=""
+
+while IFS= read -r f; do
+	[ -n "$f" ] || continue
+
+	# 判定対象はワーキングツリーではなくステージ内容
+	if [ -z "$(git show ":$f" | gofmt -l)" ]; then
+		continue
 	fi
-done
+
+	# ステージ内容とワーキングツリーが異なる場合、gofmt -w + git add は
+	# ステージしていない変更まで取り込んでしまうため自動整形しない
+	if ! git diff --quiet -- "$f"; then
+		skipped="$skipped  $f
+"
+		continue
+	fi
+
+	gofmt -w "$f"
+	git add -- "$f"
+	formatted="$formatted  $f
+"
+done <<EOF
+$(git -c core.quotePath=false diff --cached --name-only --diff-filter=ACMR -- '*.go')
+EOF
 
 if [ -n "$formatted" ]; then
-	echo "pre-commit: gofmt を適用しました:$formatted"
+	echo "pre-commit: gofmt を適用しました:"
+	printf '%s' "$formatted"
+fi
+
+if [ -n "$skipped" ]; then
+	echo "pre-commit: 次のファイルはステージ内容が未整形ですが、ステージ外の変更があるため自動整形しませんでした:" >&2
+	printf '%s' "$skipped" >&2
+	echo "pre-commit: 'gofmt -w <file>' を実行し、整形結果をステージしてからコミットしてください。" >&2
+	exit 1
 fi
