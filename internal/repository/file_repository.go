@@ -13,7 +13,7 @@ type FileRepository struct {
 
 type FileRepo interface {
 	ListPending(ctx context.Context) ([]*domain.File, error)
-	UpdateStatus(ctx context.Context, fileID int64, status domain.SyncStatus) error
+	UpdateStatus(ctx context.Context, driveFileID string, status domain.SyncStatus) error
 	Upsert(ctx context.Context, f *domain.File) error
 }
 
@@ -35,17 +35,17 @@ func (r *FileRepository) Upsert(ctx context.Context, f *domain.File) error {
 	return err
 }
 
-func (r *FileRepository) UpdateStatus(ctx context.Context, fileID int64, status domain.SyncStatus) error {
+func (r *FileRepository) UpdateStatus(ctx context.Context, driveFileID string, status domain.SyncStatus) error {
 	_, err := r.db.Exec(ctx,
-		`UPDATE files SET sync_status = $1, updated_at = NOW() WHERE id = $2`,
-		status, fileID,
+		`UPDATE files SET sync_status = $1, updated_at = NOW() WHERE drive_file_id = $2`,
+		status, driveFileID,
 	)
 	return err
 }
 
 func (r *FileRepository) ListPending(ctx context.Context) ([]*domain.File, error) {
 	rows, err := r.db.Query(ctx,
-		`SELECT id, drive_file_id, path, checksum, mime_type, sync_status, updated_at
+		`SELECT drive_file_id, path, checksum, mime_type, sync_status, updated_at
 		FROM files WHERE sync_status = 'pending'`,
 	)
 	if err != nil {
@@ -56,7 +56,7 @@ func (r *FileRepository) ListPending(ctx context.Context) ([]*domain.File, error
 	var files []*domain.File
 	for rows.Next() {
 		f := &domain.File{}
-		if err := rows.Scan(&f.ID, &f.DriveFileID, &f.Path, &f.Checksum, &f.MimeType, &f.SyncStatus, &f.UpdatedAt); err != nil {
+		if err := rows.Scan(&f.DriveFileID, &f.Path, &f.Checksum, &f.MimeType, &f.SyncStatus, &f.UpdatedAt); err != nil {
 			return nil, err
 		}
 		files = append(files, f)

@@ -51,8 +51,10 @@ func Run(
 						if ctx.Err() != nil {
 							return
 						}
+
 						log.Printf("DownloadFile failed: fileID=%s err=%v", file.DriveFileID, err)
-						if statusErr := repo.UpdateStatus(ctx, file.ID, domain.SyncStatusFailed); statusErr != nil {
+
+						if statusErr := repo.UpdateStatus(ctx, file.DriveFileID, domain.SyncStatusFailed); statusErr != nil {
 							log.Printf("UpdateStatus failed: fileID=%s err=%v", file.DriveFileID, statusErr)
 						}
 						continue
