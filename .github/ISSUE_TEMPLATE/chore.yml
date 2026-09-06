@@ -1,0 +1,29 @@
+name: Chore
+description: リファクタ・依存更新・CI/IaC などの整備タスク
+labels: ["chore"]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: 内容
+      description: 何をどう変えるか。
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: 完了条件
+      value: |
+        - [ ]
+    validations:
+      required: true
+  - type: dropdown
+    id: model
+    attributes:
+      label: Claude Code 実行モデル
+      description: 選択後、対応する `model:*` ラベルも issue に付与すること。
+      options:
+        - "haiku — 定型作業"
+        - "sonnet — 判断を伴う整備"
+    validations:
+      required: true
