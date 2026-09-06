@@ -22,6 +22,16 @@ jobs:
           go-version-file: "go.mod"
           cache: true
 
+      - name: gofmt
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "gofmt が適用されていないファイルがあります:"
+            echo "$unformatted"
+            echo "ローカルで 'gofmt -w .' を実行してください。"
+            exit 1
+          fi
+
       - name: go vet
         run: go vet ./...
 
