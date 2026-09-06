@@ -1,0 +1,29 @@
+#!/bin/sh
+# ステージされた Go ファイルに gofmt を適用し、整形結果を再ステージする。
+# 有効化: git config core.hooksPath .githooks
+set -eu
+
+if ! command -v gofmt >/dev/null 2>&1; then
+	echo "pre-commit: gofmt が見つかりません。Go がインストールされ PATH が通っているか確認してください。" >&2
+	exit 1
+fi
+
+files=$(git diff --cached --name-only --diff-filter=ACMR -- '*.go')
+if [ -z "$files" ]; then
+	exit 0
+fi
+
+formatted=""
+for f in $files; do
+	# ステージ後に削除された等でファイルが無い場合はスキップ
+	[ -f "$f" ] || continue
+	if [ -n "$(gofmt -l "$f")" ]; then
+		gofmt -w "$f"
+		git add "$f"
+		formatted="$formatted $f"
+	fi
+done
+
+if [ -n "$formatted" ]; then
+	echo "pre-commit: gofmt を適用しました:$formatted"
+fi

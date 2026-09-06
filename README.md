@@ -63,6 +63,14 @@ PostgreSQL (Docker)
 - GCP プロジェクト（BigQuery API / Drive API 有効化済み）
 - `gcloud` CLI + `bq` CLI
 
+### 0. git フックの有効化
+
+コミット時に、ステージされた Go ファイルへ自動で `gofmt` を適用する。クローンごとに1度だけ実行する（`core.hooksPath` はリポジトリに含められないため）。
+
+```bash
+git config core.hooksPath .githooks
+```
+
 ### 1. 認証情報の設定
 
 ```bash
