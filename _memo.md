@@ -2,7 +2,7 @@
 
 Google Drive → Go ETL Worker → PostgreSQL → BigQuery のデータパイプライン。
 
-転職・学習・ポートフォリオ用途として、Go concurrency / ETL / GCP を実践的に学ぶためのプロジェクト。
+Go concurrency / ETL / GCP を実践的に学ぶための学習プロジェクト。
 
 ## アーキテクチャ
 

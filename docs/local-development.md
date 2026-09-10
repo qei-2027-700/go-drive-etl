@@ -2,7 +2,7 @@
 
 ## 前提条件
 
-- Go 1.22+
+- Go 1.26 以上
 - Docker（PostgreSQL 用）
 - Google Cloud CLI (`gcloud`)
 - Terraform
@@ -79,6 +79,9 @@ terraform apply
 ```bash
 # Docker で起動
 docker compose up -d
+
+# マイグレーション適用
+docker compose exec -T postgres psql -U app -d app_db < migrations/001_init.sql
 ```
 
-マイグレーションの実行方法は未整備のため、今後 `docs/architecture.md` に追記予定。
+接続情報は `docker-compose.yml` の値（ユーザー `app` / DB `app_db`）に対応する。
