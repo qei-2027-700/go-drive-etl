@@ -15,7 +15,7 @@
 | # | 残タスク | なぜ重要か |
 |:---:|:---|:---|
 | **8-1** | `cmd/worker/main.go`（Issue #6・未着手） | **これが無いと「動くパイプライン」と言えない。** 部品はあるが通しで実行できない |
-| **8-2** | Drive → Postgres → Proto → BQ の End-to-End 疎通 | 同上。**ポートフォリオとしての価値はここで決まる** |
+| **8-2** | Drive → Postgres → Proto → BQ の End-to-End 疎通 | 同上。**動くパイプラインとして成立するかはここで決まる** |
 | 2-2 | `protoc` 生成手順が `Makefile` に無い | 生成物（`internal/pb/`）はあるが**再生成が再現できない** |
 | 1-2 | `internal/parser/` 未作成 | Issue #25（ファイルパーサ・チャンク化）が未着手のため |
 
@@ -45,7 +45,6 @@
 | 2-3 | `internal/pb/` にコード生成 | ✅ `record.pb.go` |
 
 > ℹ️ **`service` 定義は無い＝gRPCは使っていない。** スキーマ定義としてのみ protobuf を採用している。
-> この区別は面接で必ず説明できるようにする（`carrier-advice` の `interview/qa-backend.md`）。
 
 ---
 
