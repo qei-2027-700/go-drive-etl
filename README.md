@@ -23,6 +23,8 @@ PostgreSQL (Docker)
     ├─▶ BigQuery (etl_raw)        Bronze: 生データ保管
     │       ↓ SQL View
     │   BigQuery (Silver/Gold)    Transform → Analytics-ready
+    │       ↓
+    │   Looker Studio             BI ダッシュボード
     │
     └─▶ Google Drive (export-reports/)  集計レポートを書き戻し
 ```
@@ -33,7 +35,7 @@ PostgreSQL (Docker)
 |---|---|---|
 | Bronze | BigQuery `etl_raw` | 生データをそのまま永続化 |
 | Silver | BigQuery View | Protocol Buffers 定義の型安全な変換層 |
-| Gold | BigQuery Mart | 可視化・レポート配信用の集計層 |
+| Gold | BigQuery Mart | Looker Studio での可視化・レポート配信用の集計層 |
 | Metadata | PostgreSQL | 処理ステータス・重複排除・リトライ管理 |
 
 ---
@@ -42,11 +44,12 @@ PostgreSQL (Docker)
 
 | カテゴリ | 技術 |
 |---|---|
-| 言語 | Go 1.26 |
+| 言語 | Go 1.26（`go.mod`: 1.26.5） |
 | 並行処理 | goroutine / Worker Pool / `context.Context` |
 | スキーマ管理 | Protocol Buffers |
 | データソース | Google Drive API v3 (OAuth2) |
 | DWH | BigQuery (GCP) |
+| BI / 可視化 | Looker Studio（Phase 3 で導入予定） |
 | 状態管理DB | PostgreSQL (Docker) |
 | IaC | Terraform (Google Provider ~> 6.0) |
 | CI/CD | GitHub Actions |
@@ -58,7 +61,7 @@ PostgreSQL (Docker)
 
 ### 前提条件
 
-- Go 1.26+
+- Go 1.26.5+
 - Docker
 - GCP プロジェクト（BigQuery API / Drive API 有効化済み）
 - `gcloud` CLI + `bq` CLI
@@ -137,14 +140,38 @@ go-drive-etl/
 
 ## 実装状況
 
-| Phase | 内容 | 状態 |
+コンポーネント単位の進捗。詳細は [docs/progress.md](docs/progress.md) 参照。
+
+| Step | 内容 | 状態 |
 |---|---|---|
 | 1 | プロジェクト基盤・PostgreSQL | ✅ |
-| 2 | Protocol Buffers スキーマ定義 | 🔲 |
+| 2 | Protocol Buffers スキーマ定義（`FileRecord` / `ChunkRecord`） | 🚧 生成コードはあるが `protoc` の再生成手順が未整備 |
 | 3 | DB マイグレーション | ✅ |
 | 4 | PostgreSQL Repository | ✅ |
 | 5 | Google Drive クライアント | ✅ |
-| 6 | Worker Pool (並行処理) | 🔲 |
+| 6 | Worker Pool（並行処理・Graceful Shutdown） | ✅ |
 | 7 | BigQuery クライアント | ✅ |
-| 8 | ETL パイプライン統合 | 🔲 |
+| 8 | ETL パイプライン統合（`cmd/worker` / ファイルパーサー） | 🔲 |
 | IaC | Terraform (BigQuery データセット / テーブル) | ✅ |
+
+---
+
+## ロードマップ
+
+プロジェクト全体の到達目標。詳細は [docs/architecture.md](docs/architecture.md) 参照。
+
+| Phase | 内容 | 状態 |
+|---|---|---|
+| 1. AI-Ready Pipeline | Drive の MD を取り込み、BigQuery にチャンク単位で格納する | 🚧 進行中 |
+| 2. RAG Agent | Vertex AI Embeddings + BigQuery Vector Search + RAG Agent CLI | 🔲 |
+| 3. BI & Delivery | Silver / Gold 層設計、Looker Studio 可視化、Drive への CSV 自動デリバリー | 🔲 |
+
+---
+
+## ドキュメント
+
+- [アーキテクチャ詳細](docs/architecture.md)
+- [実装ガイド](docs/implementation-guide.md)
+- [ローカル開発環境](docs/local-development.md)
+- [進捗管理](docs/progress.md)
+- [セキュリティ](docs/security.md)
