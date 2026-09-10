@@ -10,5 +10,17 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
+  # Firestore エミュレータ。FIRESTORE_EMULATOR_HOST を設定したクライアントが自動的にここへ向く。
+  # --project はエミュレータ内でのみ有効な識別子で、実在の GCP プロジェクトである必要はない。
+  firestore:
+    image: gcr.io/google.com/cloudsdktool/google-cloud-cli:emulators
+    command: >
+      gcloud emulators firestore start
+      --host-port=0.0.0.0:8080
+      --database-mode=firestore-native
+      --project=go-drive-etl-local
+    ports:
+      - "8080:8080"
+
 volumes:
   postgres_data:
