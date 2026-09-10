@@ -9,7 +9,7 @@
 | —        | Google Drive                                       | 外部データソース      | 現場がファイルをアップロードする最上流。入口であり、出口でもある。                                                                |
 | Bronze   | Cloud Storage (GCS) / BigQuery (Raw データセット)  | Raw Data Lake         | 取得した生ファイル、または未加工のデータをそのまま永続化する層。                                                                  |
 | Silver   | BigQuery (Component / Warehouse 層)                | Trusted Layer         | Protocol Buffers でスキーマ定義された型安全な構造。SQL View を用いて共通ビジネスロジックをカプセル化（コンポーネント化）。        |
-| Gold     | BigQuery (Mart 層)                                 | Analytics-ready DWH   | 可視化（Redash）や Google Drive への CSV レポート自動デリバリー用に最適化された最終集計層。                                       |
+| Gold     | BigQuery (Mart 層)                                 | Analytics-ready DWH   | 可視化（Looker Studio）や Google Drive への CSV レポート自動デリバリー用に最適化された最終集計層。                                |
 | Metadata | PostgreSQL                                         | 状態管理 DB           | ファイルの処理ステータス、チェックサム（重複排除）、ジョブのリトライ管理などの「ステート（状態）」のみを管理。データの実体は保持しない。 |
 
 ---
@@ -83,33 +83,34 @@ OS シグナル（`Ctrl+C` / `SIGTERM`）を検知すると、`context` がキ�
 
 ---
 
-## IaC (Pulumi / Go)
+## IaC (Terraform)
 
-インフラは **Pulumi (Go)** で管理する。ETL パイプラインと同じ Go で記述できるため、言語を統一しコンテキストスイッチを減らす。
+インフラは **Terraform（Google Provider ~> 6.0）** で管理する。BigQuery まわりのリソース定義が宣言的に読め、GCP のドキュメントやサンプルもそのまま流用できる。
 
 ### 管理対象リソース
 
 | リソース | 内容 |
 | :--- | :--- |
-| BigQuery dataset | `etl_raw`（Bronze 層） |
-| BigQuery table | `etl_raw.files`（スキーマ定義） |
-| IAM | サービスアカウント + 最小権限ロール付与 |
+| BigQuery dataset | `etl_raw`（Bronze 層）。課金未設定のためテーブル・パーティションに 60 日の有効期限を設定 |
+| BigQuery table | `etl_raw.drive_files`（スキーマ定義） |
+| （将来）IAM | BI ツール / Worker 用サービスアカウント + 最小権限ロール付与 |
 | （将来）GCS bucket | 生ファイルの保管用 Bronze 層 |
 
 ### ディレクトリ構成
 
 ```
 iac/
-├── main.go         # Pulumi プログラムエントリーポイント
-├── go.mod          # iac 専用モジュール（パイプライン本体と分離）
-├── Pulumi.yaml     # プロジェクト定義
-└── Pulumi.dev.yaml # dev スタックの設定値
+├── main.tf                    # provider / terraform ブロック
+├── bigquery.tf                # dataset・table 定義
+├── variables.tf               # project_id / dataset_id / location
+├── terraform.tfvars           # 実値（Git 管理外）
+└── terraform.tfvars.example   # 雛形
 ```
 
 ### 方針
 
-- `iac/` は独立した Go モジュールとして管理（`go.mod` を分ける）
-- スタックは `dev` のみで開始し、将来 `prod` を追加
+- ステートはローカルの `terraform.tfstate`。複数環境を扱う段階で GCS バックエンドへ移す
+- 環境は `dev` のみで開始し、将来 `prod` を追加
 - ADC（Application Default Credentials）で認証（ローカル: `gcloud auth application-default login`）
 
 ---
@@ -137,7 +138,7 @@ Go Worker（ETL）
 - [ ] ファイルパーサー実装（MD を優先、将来 PDF / CSV に拡張可能な設計）
 - [ ] `ChunkRecord` を BigQuery に格納するテーブル・ロジック実装
 - [ ] `cmd/worker` エントリーポイント完成（End-to-End 動作）
-- [ ] Pulumi で BQ テーブルを IaC 管理
+- [ ] Terraform で BQ テーブルを IaC 管理
 - [ ] `go test ./...` が通る状態を維持
 
 ---
@@ -163,3 +164,33 @@ LLMOps（評価・モデルバージョン管理）
 - [ ] BigQuery Vector Search でセマンティック検索
 - [ ] 週次振り返りを参照できる RAG Agent CLI 動作
 - [ ] RAG 評価指標（Recall / Faithfulness）の計測
+
+---
+
+### Phase 3 — BI & Delivery（Phase 1 完了後）
+
+Bronze に溜めたデータを Silver / Gold へ整形し、Looker Studio で可視化しつつ、集計 CSV を Drive へ書き戻す。「AI Ready」だけでなく「BI Ready」でもあることを示すフェーズ。
+
+```
+BigQuery Raw 層（Bronze）
+    ↓ SQL View（共通ロジックのカプセル化）
+BigQuery Silver 層
+    ↓ 集計クエリ
+BigQuery Mart 層（Gold）
+    ├─▶ Looker Studio（BigQuery ネイティブコネクタでダッシュボード）
+    └─▶ Go Worker → CSV 化 → Google Drive /export-reports/
+```
+
+**BI ツールに Looker Studio を選ぶ理由**
+
+- BigQuery のネイティブコネクタで接続でき、追加のサーバー運用が発生しない（Redash はセルフホスト前提で、本体 + PostgreSQL + Redis + ワーカーの運用が必要になる）
+- Drive / BigQuery / IAM と同じ Google エコシステム内で認証・権限を統一できる
+- 共有リンクでダッシュボードを公開でき、ポートフォリオとして提示しやすい
+
+ダッシュボード定義は IaC 管理の対象外になるため、SQL ロジックは BigQuery の View 側に寄せて可視化層から独立させる。
+
+**Phase 3 の完了条件**
+- [ ] Silver 層の SQL View と Gold 層の Mart テーブルを設計・作成
+- [ ] BI 接続用サービスアカウントを最小権限で Terraform 管理
+- [ ] Looker Studio から Gold 層をクエリし、ダッシュボード 1 枚完成（README にスクリーンショット掲載）
+- [ ] Gold 層の集計結果を CSV 化し Drive `/export-reports/` へ自動デリバリー

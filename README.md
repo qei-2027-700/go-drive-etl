@@ -47,7 +47,7 @@ flowchart LR
     end
 
     subgraph CONS["活用"]
-        REDASH["Redash<br/>ダッシュボード"]
+        LOOKER["Looker Studio<br/>ダッシュボード"]
         RAG["RAG Agent CLI<br/>Vertex AI Embeddings"]
     end
 
@@ -57,7 +57,7 @@ flowchart LR
     LD --> PG
     LD --> BRONZE --> SILVER --> GOLD
     GOLD --> OUT
-    GOLD --> REDASH
+    GOLD --> LOOKER
     SILVER --> RAG
 ```
 
@@ -155,6 +155,7 @@ BigQuery のデータセットとテーブルは Terraform で定義し、手作
 | スキーマ管理 | Protocol Buffers |
 | データソース | Google Drive API v3 (OAuth2) |
 | DWH | BigQuery |
+| BI / 可視化 | Looker Studio（Phase 3 で導入予定） |
 | 状態管理 DB | PostgreSQL 16 (Docker) |
 | IaC | Terraform (Google Provider ~> 6.0) |
 | テスト | `go test` / `mockgen` |
@@ -255,7 +256,7 @@ go test ./...
 make mock
 ```
 
-> Redash ダッシュボードと RAG Agent CLI の実行例は、該当フェーズの実装完了後に追記する。
+> Looker Studio ダッシュボードと RAG Agent CLI の実行例は、該当フェーズの実装完了後に追記する。
 
 ---
 
@@ -309,7 +310,7 @@ go-drive-etl/
 |:---|:---|
 | Phase 1 | 任意のファイルを Drive から取り込み、チャンク単位で BigQuery に格納するまでを通しで動かす |
 | Phase 2 | Vertex AI Embeddings と BigQuery Vector Search を用いた RAG Agent CLI を構築し、Recall / Faithfulness を計測する |
-| Phase 3 | Gold 層を Redash で可視化し、集計 CSV を Drive へ自動デリバリーする |
+| Phase 3 | Gold 層を Looker Studio で可視化し、集計 CSV を Drive へ自動デリバリーする |
 
 ---
 
