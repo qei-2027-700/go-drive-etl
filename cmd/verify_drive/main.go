@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"cloud.google.com/go/bigquery"
-	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/joho/godotenv"
 	bqclient "github.com/qei-2027-700/go-drive-etl/internal/bq"
 	"github.com/qei-2027-700/go-drive-etl/internal/domain"
@@ -40,14 +39,12 @@ func main() {
 
 	fmt.Printf("Drive 取得ファイル数: %d\n\n", len(files))
 
-	// ② PostgreSQL: Upsert
-	db, err := pgxpool.New(ctx, os.Getenv("POSTGRES_DSN"))
+	// ② 状態管理DB: Upsert
+	repo, closeRepo, err := repository.New(ctx)
 	if err != nil {
-		log.Fatalf("DB 接続に失敗: %v", err)
+		log.Fatalf("リポジトリ初期化に失敗: %v", err)
 	}
-	defer db.Close()
-
-	repo := repository.NewFileRepository(db)
+	defer closeRepo()
 
 	for _, f := range files {
 		record := &domain.File{
@@ -61,14 +58,14 @@ func main() {
 			log.Printf("Upsert 失敗 [%s]: %v", f.Name, err)
 			continue
 		}
-		fmt.Printf("  ✓ PostgreSQL Upsert: %s\n", f.Name)
+		fmt.Printf("  ✓ 状態管理DB Upsert: %s\n", f.Name)
 	}
 
 	pending, err := repo.ListPending(ctx)
 	if err != nil {
 		log.Fatalf("ListPending 失敗: %v", err)
 	}
-	fmt.Printf("  PostgreSQL pending 件数: %d\n\n", len(pending))
+	fmt.Printf("  状態管理DB pending 件数: %d\n\n", len(pending))
 
 	// ③ BigQuery: Insert
 	bqClient, err := bqclient.NewClient(ctx)
@@ -94,5 +91,5 @@ func main() {
 	}
 
 	fmt.Printf("  ✓ BigQuery Insert: %d 件\n", len(rows))
-	fmt.Println("\n--- Drive → PostgreSQL → BigQuery 疎通完了 ---")
+	fmt.Println("\n--- Drive → 状態管理DB → BigQuery 疎通完了 ---")
 }
