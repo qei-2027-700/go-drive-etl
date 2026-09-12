@@ -107,3 +107,12 @@ docker compose exec -T postgres psql -U app -d app_db < migrations/001_init.sql
 ```
 
 接続情報は `docker-compose.yml` の値（ユーザー `app` / DB `app_db`）に対応する。
+
+PostgreSQL 実装のテストも同じ形で実行する。`POSTGRES_TEST_DSN` が未設定なら自動でスキップされる。
+
+```bash
+POSTGRES_TEST_DSN=postgres://app:password@localhost:5432/app_db?sslmode=disable \
+  go test ./internal/repository/
+```
+
+**このテストは `files` テーブルを空にする。** アプリが読む `POSTGRES_DSN` ではなく専用の変数を使うのは、接続先を取り違えて本番相当のデータを消さないようにするため。

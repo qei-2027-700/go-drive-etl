@@ -13,7 +13,9 @@ services:
   # Firestore エミュレータ。FIRESTORE_EMULATOR_HOST を設定したクライアントが自動的にここへ向く。
   # --project はエミュレータ内でのみ有効な識別子で、実在の GCP プロジェクトである必要はない。
   firestore:
-    image: gcr.io/google.com/cloudsdktool/google-cloud-cli:emulators
+    # docs/security.md の方針に従いダイジェストで固定する。:emulators は中身が
+    # 更新され続けるタグなので、放置するとある日ローカルのテストが再現しなくなる。
+    image: gcr.io/google.com/cloudsdktool/google-cloud-cli@sha256:45a15cc163d2df13137478856b4b9bb90426100fa8aec542269460c10110b727 # 584.0.0-emulators
     command: >
       gcloud emulators firestore start
       --host-port=0.0.0.0:8080

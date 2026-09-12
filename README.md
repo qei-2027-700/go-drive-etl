@@ -274,11 +274,17 @@ go test ./...
 make mock
 ```
 
-Firestore 実装のテストはエミュレータに対して実行する。`FIRESTORE_EMULATOR_HOST` が未設定なら自動でスキップされる。
+リポジトリ層のテストは実物のバックエンドに対して実行する。環境変数が未設定なら自動でスキップされるため、`go test ./...` はそのままでも通る。
 
 ```bash
+# Firestore（エミュレータ）
 docker compose up -d firestore
 FIRESTORE_EMULATOR_HOST=localhost:8080 go test ./internal/repository/
+
+# PostgreSQL（files テーブルを空にする）
+docker compose up -d postgres
+POSTGRES_TEST_DSN=postgres://app:password@localhost:5432/app_db?sslmode=disable \
+  go test ./internal/repository/
 ```
 
 > Looker Studio ダッシュボードと RAG Agent CLI の実行例は、該当フェーズの実装完了後に追記する。

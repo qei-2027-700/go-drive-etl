@@ -14,7 +14,9 @@ import (
 )
 
 // エミュレータ内でのみ有効な識別子。実在の GCP プロジェクトである必要はない。
-const testProjectID = "go-drive-etl-test"
+// エミュレータはプロジェクトごとにデータを分けるため、docker-compose.yml の
+// --project と同じ値にしておく。ずれるとエミュレータを覗いてもテストのデータが見えない。
+const testProjectID = "go-drive-etl-local"
 
 // newTestRepo は Firestore エミュレータに接続したリポジトリを返す。
 // エミュレータが無い環境（CI など）ではテストをスキップする。
