@@ -15,7 +15,15 @@ import (
 	"github.com/qei-2027-700/go-drive-etl/internal/repository"
 )
 
+// log.Fatalf は os.Exit を呼ぶため defer が走らない。
+// 後始末を確実に実行するため、処理は run に寄せて main ではエラーを受けるだけにする。
 func main() {
+	if err := run(); err != nil {
+		log.Fatal(err)
+	}
+}
+
+func run() error {
 	_ = godotenv.Load()
 
 	ctx := context.Background()
@@ -23,18 +31,18 @@ func main() {
 	// ① Drive: ファイル一覧取得
 	driveClient, err := drive.NewClient(ctx)
 	if err != nil {
-		log.Fatalf("Drive クライアントの初期化に失敗: %v", err)
+		return fmt.Errorf("Drive クライアントの初期化に失敗: %w", err)
 	}
 
 	folderID := os.Getenv("DRIVE_FOLDER_ID")
 	files, err := driveClient.ListFiles(ctx, folderID)
 	if err != nil {
-		log.Fatalf("ファイル一覧の取得に失敗: %v", err)
+		return fmt.Errorf("ファイル一覧の取得に失敗: %w", err)
 	}
 
 	if len(files) == 0 {
 		fmt.Println("ファイルが見つかりませんでした。")
-		return
+		return nil
 	}
 
 	fmt.Printf("Drive 取得ファイル数: %d\n\n", len(files))
@@ -42,7 +50,7 @@ func main() {
 	// ② 状態管理DB: Upsert
 	repo, closeRepo, err := repository.New(ctx)
 	if err != nil {
-		log.Fatalf("リポジトリ初期化に失敗: %v", err)
+		return fmt.Errorf("リポジトリ初期化に失敗: %w", err)
 	}
 	defer closeRepo()
 
@@ -63,14 +71,14 @@ func main() {
 
 	pending, err := repo.ListPending(ctx)
 	if err != nil {
-		log.Fatalf("ListPending 失敗: %v", err)
+		return fmt.Errorf("ListPending 失敗: %w", err)
 	}
 	fmt.Printf("  状態管理DB pending 件数: %d\n\n", len(pending))
 
 	// ③ BigQuery: Insert
 	bqClient, err := bqclient.NewClient(ctx)
 	if err != nil {
-		log.Fatalf("BigQuery クライアントの初期化に失敗: %v", err)
+		return fmt.Errorf("BigQuery クライアントの初期化に失敗: %w", err)
 	}
 	defer bqClient.Close()
 
@@ -87,9 +95,11 @@ func main() {
 	}
 
 	if err := bqClient.InsertRows(ctx, "drive_files", rows); err != nil {
-		log.Fatalf("BigQuery Insert 失敗: %v", err)
+		return fmt.Errorf("BigQuery Insert 失敗: %w", err)
 	}
 
 	fmt.Printf("  ✓ BigQuery Insert: %d 件\n", len(rows))
 	fmt.Println("\n--- Drive → 状態管理DB → BigQuery 疎通完了 ---")
+
+	return nil
 }

@@ -10,7 +10,7 @@
 | Bronze   | Cloud Storage (GCS) / BigQuery (Raw データセット)  | Raw Data Lake         | 取得した生ファイル、または未加工のデータをそのまま永続化する層。                                                                  |
 | Silver   | BigQuery (Component / Warehouse 層)                | Trusted Layer         | Protocol Buffers でスキーマ定義された型安全な構造。SQL View を用いて共通ビジネスロジックをカプセル化（コンポーネント化）。        |
 | Gold     | BigQuery (Mart 層)                                 | Analytics-ready DWH   | 可視化（Looker Studio）や Google Drive への CSV レポート自動デリバリー用に最適化された最終集計層。                                |
-| Metadata | Firestore                                          | 状態管理 DB           | ファイルの処理ステータス、チェックサム（重複排除）、ジョブのリトライ管理などの「ステート（状態）」のみを管理。データの実体は保持しない。`STATE_BACKEND` で PostgreSQL 実装に切り替えられる。 |
+| Metadata | Firestore                                          | 状態管理 DB           | ファイルの処理ステータスと checksum という「ステート（状態）」のみを管理。データの実体は保持しない。`STATE_BACKEND` で PostgreSQL 実装に切り替えられる。ジョブのリトライ管理（`jobs`）とチャンク（`chunks`）は PostgreSQL 側にのみ定義があり、Firestore へは移していない。 |
 
 ---
 
@@ -31,11 +31,13 @@
 
 ### Firestore（既定）
 
-コレクションは `files` ひとつ。**ドキュメント ID に Drive の `drive_file_id` をそのまま使う**のが設計の核心で、これにより冪等性が構造として保証される。同じファイルを再取得しても同じドキュメントを指すため、書き込みは常に上書きになり、重複判定のロジックを書く必要がない。
+コレクションは `files` ひとつ。**ドキュメント ID に Drive の `drive_file_id` をそのまま使う**のが設計の核心で、同じファイルを再取得しても同じドキュメントを指すため、行が重複しないことが構造として保証される。`Upsert` は `Set` 一発で済み、重複判定のロジックを書く必要がない。
+
+ただしこれは「ドキュメントが重複しない」ことの保証であって、処理の冪等性（同じファイルを二度処理しない）はまだ担保していない。`Upsert` は `sync_status` も含めてドキュメントを置き換えるため、`done` になったファイルを再度 `Upsert` すると `pending` に戻る。また `checksum` は保存しているだけで、比較して取り込みを省く処理は未実装。どちらも `UpdateStatus(done)` を呼ぶ本体（#6 の `cmd/worker`）と同時に設計する。
 
 ```txt
 files/{drive_file_id}
-  drive_file_id : string     // ドキュメント ID と同じ値を冗長に保持（クエリ結果から復元するため）
+  drive_file_id : string     // ドキュメント ID と同じ値を冗長に保持（コンソールやエクスポートでの可読性のため。コードは doc.Ref.ID を読む）
   path          : string
   checksum      : string     // Drive が返す md5Checksum
   mime_type     : string

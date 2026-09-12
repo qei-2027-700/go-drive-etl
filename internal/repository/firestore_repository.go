@@ -25,6 +25,8 @@ func NewFirestoreFileRepository(client *firestore.Client) *FirestoreFileReposito
 // fileDoc は Firestore 上のドキュメント表現。
 // domain.File を Firestore のタグで汚さないため repository 層に閉じ込める。
 type fileDoc struct {
+	// ドキュメント ID と同じ値を冗長に持つ。読み出しは doc.Ref.ID を使うため
+	// コード側では参照しないが、コンソールやエクスポートで ID が見えるように保存する。
 	DriveFileID string    `firestore:"drive_file_id"`
 	Path        string    `firestore:"path"`
 	Checksum    string    `firestore:"checksum"`
@@ -85,8 +87,9 @@ func (r *FirestoreFileRepository) ListPending(ctx context.Context) ([]*domain.Fi
 		}
 
 		// domainパッケージを Firestore に依存させないため、 d の内容を、domain.File へ詰め替える
+		// ID はドキュメント ID を正とする（フィールド側が欠けていても壊れない）
 		files = append(files, &domain.File{
-			DriveFileID: d.DriveFileID,
+			DriveFileID: doc.Ref.ID,
 			Path:        d.Path,
 			Checksum:    d.Checksum,
 			MimeType:    d.MimeType,
