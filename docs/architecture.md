@@ -10,7 +10,7 @@
 | Bronze   | Cloud Storage (GCS) / BigQuery (Raw データセット)  | Raw Data Lake         | 取得した生ファイル、または未加工のデータをそのまま永続化する層。                                                                  |
 | Silver   | BigQuery (Component / Warehouse 層)                | Trusted Layer         | Protocol Buffers でスキーマ定義された型安全な構造。SQL View を用いて共通ビジネスロジックをカプセル化（コンポーネント化）。        |
 | Gold     | BigQuery (Mart 層)                                 | Analytics-ready DWH   | 可視化（Looker Studio）や Google Drive への CSV レポート自動デリバリー用に最適化された最終集計層。                                |
-| Metadata | PostgreSQL                                         | 状態管理 DB           | ファイルの処理ステータス、チェックサム（重複排除）、ジョブのリトライ管理などの「ステート（状態）」のみを管理。データの実体は保持しない。 |
+| Metadata | Firestore                                          | 状態管理 DB           | ファイルの処理ステータス、チェックサム（重複排除）、ジョブのリトライ管理などの「ステート（状態）」のみを管理。データの実体は保持しない。`STATE_BACKEND` で PostgreSQL 実装に切り替えられる。 |
 
 ---
 
@@ -25,7 +25,29 @@
 
 ---
 
-## PostgreSQL スキーマ (状態管理の役割)
+## 状態管理のデータ構造
+
+状態管理は `FileRepo` インターフェース越しに扱い、Firestore と PostgreSQL の 2 実装を `STATE_BACKEND` で切り替える。既定は Firestore。
+
+### Firestore（既定）
+
+コレクションは `files` ひとつ。**ドキュメント ID に Drive の `drive_file_id` をそのまま使う**のが設計の核心で、これにより冪等性が構造として保証される。同じファイルを再取得しても同じドキュメントを指すため、書き込みは常に上書きになり、重複判定のロジックを書く必要がない。
+
+```txt
+files/{drive_file_id}
+  drive_file_id : string     // ドキュメント ID と同じ値を冗長に保持（クエリ結果から復元するため）
+  path          : string
+  checksum      : string     // Drive が返す md5Checksum
+  mime_type     : string
+  sync_status   : string     // pending | processing | done | failed
+  updated_at    : timestamp  // serverTimestamp。クライアントの時計に依存させない
+```
+
+未処理ファイルの抽出は `sync_status == "pending"` の単一フィールド等価検索で行う。自動インデックスで足りるため、複合インデックスの定義は不要。
+
+Firestore に連番の整数 ID は存在しないため、`domain.File` は数値 ID を持たず、`drive_file_id`（string）を識別子とする。
+
+### PostgreSQL（切り替え時）
 
 ```sql
 -- ファイル同期状態・冪等性 (Idempotency) の管理
@@ -48,17 +70,23 @@ CREATE TABLE IF NOT EXISTS jobs (
 );
 ```
 
+Firestore の「ドキュメント ID による上書き」に相当するのが `drive_file_id` の UNIQUE 制約と `ON CONFLICT ... DO UPDATE` で、役割は同じ。
+
+### 挙動の差分
+
+`UPDATE ... WHERE` は対象行が無くても no-op だが、Firestore の `Update` は存在しないドキュメントに対して `NotFound` を返す。呼び出し側は未処理一覧から得た ID しか渡さないため、このエラーは実際の不整合を示す。
+
 ---
 
 ## Go Worker の責務
 
 | ステップ             | 内容                                                                                                                    |
 | :------------------- | :---------------------------------------------------------------------------------------------------------------------- |
-| **Extract**          | Drive API から新着ファイルを検知（PostgreSQL の `checksum` で重複排除）                                                |
+| **Extract**          | Drive API から新着ファイルを検知（状態管理 DB の `checksum` で重複排除）                                              |
 | **Download**         | ファイルをストリームでローカルに取得                                                                                    |
 | **Parse & Validate** | Go の Parser（CSV/JSON）で分解し、Protocol Buffers から自動生成された Go 構造体（Struct）にマッピングしてスキーマ検証  |
 | **Load (Bronze)**    | スキーマ整合性の取れたデータを BigQuery Raw 層へ並行高速ロード（Streaming Insert / Bulk Load）                         |
-| **State Update**     | PostgreSQL の管理ステータスを `done` に更新                                                                             |
+| **State Update**     | 状態管理 DB のステータスを `done` に更新                                                                                |
 | **Export (Gold)**    | BigQuery Mart 層のデータを吸い上げ、CSV 化して Google Drive（`/export-reports/`）へ自動書き戻し                        |
 
 ---
@@ -128,7 +156,7 @@ Drive に置いた Notion 週次振り返り MD を取り込み、BigQuery に�
 Google Drive /raw-inputs/
     ↓ go-drive-etl スキャン
 Go Worker（ETL）
-    ├─ PostgreSQL（状態管理・重複排除）
+    ├─ Firestore（状態管理・重複排除）
     └─ BigQuery
          ├─ Raw 層: ファイルメタデータ
          └─ Chunk 層: ChunkRecord（content, chunk_index）← ここまでが Phase 1

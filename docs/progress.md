@@ -15,7 +15,7 @@
 | # | 残タスク | なぜ重要か |
 |:---:|:---|:---|
 | **8-1** | `cmd/worker/main.go`（Issue #6・未着手） | **これが無いと「動くパイプライン」と言えない。** 部品はあるが通しで実行できない |
-| **8-2** | Drive → Postgres → Proto → BQ の End-to-End 疎通 | 同上。**動くパイプラインとして成立するかはここで決まる** |
+| **8-2** | Drive → 状態管理DB → Proto → BQ の End-to-End 疎通 | 同上。**動くパイプラインとして成立するかはここで決まる** |
 | 2-2 | `protoc` 生成手順が `Makefile` に無い | 生成物（`internal/pb/`）はあるが**再生成が再現できない** |
 | 1-2 | `internal/parser/` 未作成 | Issue #25（ファイルパーサ・チャンク化）が未着手のため |
 
@@ -50,14 +50,17 @@
 
 ### Phase 3: DB マイグレーション
 
+> 以下は PostgreSQL で実装した当時の記録。#63 で状態管理を Firestore に移行し、
+> PostgreSQL は `STATE_BACKEND=postgres` で選べる代替実装として残している。
+
 | # | タスク | 状態 |
 |:---:|:---|:---:|
 | 3-1 | `migrations/001_init.sql` 作成 | ✅ |
-| 3-2 | Postgres 起動 & マイグレーション適用 | ❓ 要確認（ローカル実行の確認が必要） |
+| 3-2 | Postgres 起動 & マイグレーション適用 | ✅ ローカルで疎通確認済み |
 
 ---
 
-### Phase 4: Repository (PostgreSQL)
+### Phase 4: Repository (状態管理)
 
 | # | タスク | 状態 |
 |:---:|:---|:---:|
@@ -66,6 +69,12 @@
 | 4-3 | `FileRepository.ListPending` | ✅ **バグ解消済み**（`rows.Scan` の重複指定は解消） |
 | 4-4 | `SyncStatus` 定数の有効化 | ✅ `domain` パッケージに定数化済み |
 | 4-5 | `UpdateStatus` メソッド実装 | ✅ |
+| 4-6 | Firestore 実装（`firestore_repository.go`）| ✅ #63 |
+| 4-7 | `STATE_BACKEND` による実装切り替え（`factory.go`）| ✅ #63 |
+| 4-8 | Firestore エミュレータに対するテスト | ✅ #63 |
+
+> #63 で状態管理を Firestore へ移行した。既定は Firestore で、`STATE_BACKEND=postgres` を
+> 設定すると上記 4-1〜4-5 の PostgreSQL 実装に切り替わる。両実装とも `FileRepo` を満たす。
 
 ---
 
@@ -107,7 +116,7 @@
 | # | タスク | 状態 |
 |:---:|:---|:---:|
 | 8-1 | `cmd/worker/main.go` 作成 | ❌ Issue #6（**Issue #63 の Firestore 移行完了後に着手**） |
-| 8-2 | Drive → Postgres → Proto → BQ の End-to-End 疎通 | ❌ |
+| 8-2 | Drive → 状態管理DB → Proto → BQ の End-to-End 疎通 | ❌ |
 | 8-3 | Graceful Shutdown テスト | ❌ |
 
 ---

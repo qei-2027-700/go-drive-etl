@@ -2,6 +2,10 @@
 
 「1ファイルをエラーなく回収・検証し、BigQuery Raw層まで並行パイプラインで流す」MVP（最小限の構成）を段階的に作る。
 
+> **注記**: この文書は Phase 1 を組み立てた当時の手順であり、現在の構成とは一致しない。
+> 状態管理は Firestore を既定とし、PostgreSQL は `STATE_BACKEND` で切り替える構成に変更済み（#63）。
+> 現在のセットアップ手順は [README](../README.md) と [local-development.md](local-development.md) を参照すること。
+
 ---
 
 ## Phase 1: プロジェクト基盤

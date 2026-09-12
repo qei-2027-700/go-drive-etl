@@ -3,7 +3,7 @@
 ## 前提条件
 
 - Go 1.26 以上
-- Docker（PostgreSQL 用）
+- Docker（Firestore エミュレータ / PostgreSQL 用）
 - Google Cloud CLI (`gcloud`)
 - Terraform
 
@@ -72,13 +72,35 @@ terraform apply
 
 `iac/terraform.tfvars` に実際の値を設定する（git 管理外）。`iac/terraform.tfvars.example` を参考に作成すること。
 
-## PostgreSQL（メタデータ管理）
+## 状態管理 DB
 
-ファイルの処理状態は PostgreSQL で管理する。
+ファイルの処理状態は Firestore で管理する。`STATE_BACKEND` を `postgres` にすると PostgreSQL 実装に切り替わる（省略時は Firestore）。
+
+### Firestore（既定）
+
+ローカルではエミュレータを使う。GCP の認証も課金も発生しない。
+
+```bash
+docker compose up -d firestore
+```
+
+`.env` で `FIRESTORE_EMULATOR_HOST=localhost:8080` を有効にすると、クライアントライブラリが自動でエミュレータへ向く。Go 側に分岐は無い。
+
+**本番の Firestore に接続するときは `FIRESTORE_EMULATOR_HOST` を必ず空にすること。** 値が残っていると、本番のつもりの実行が黙って localhost を見る。
+
+リポジトリ層のテストもエミュレータに対して実行する。環境変数が未設定なら自動でスキップされるため、CI には影響しない。
+
+```bash
+FIRESTORE_EMULATOR_HOST=localhost:8080 go test ./internal/repository/
+```
+
+### PostgreSQL
+
+`.env` に `STATE_BACKEND=postgres` を設定する。
 
 ```bash
 # Docker で起動
-docker compose up -d
+docker compose up -d postgres
 
 # マイグレーション適用
 docker compose exec -T postgres psql -U app -d app_db < migrations/001_init.sql
