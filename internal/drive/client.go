@@ -3,10 +3,7 @@ package drive
 import (
 	"context"
 	"io"
-	"os"
 
-	"golang.org/x/oauth2"
-	"golang.org/x/oauth2/google"
 	driveapi "google.golang.org/api/drive/v3"
 	"google.golang.org/api/option"
 )
@@ -20,20 +17,19 @@ type DriveClient interface {
 	DownloadFile(ctx context.Context, fileID string) ([]byte, error)
 }
 
+// NewClient は ADC（Application Default Credentials）で Drive API クライアントを作成する。
+// サービスアカウントの JSON キーを環境変数 GOOGLE_APPLICATION_CREDENTIALS で指定して使う
+// （利用前に対象フォルダをサービスアカウントのメールアドレスに共有しておくこと）。
+//
+// OAuth 2.0 ユーザー委譲方式に戻したい場合（サービスアカウント方式が使えない環境など）:
+//  1. cmd/auth/ を実行してリフレッシュトークンを取得
+//  2. .env.example にある GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET / GOOGLE_REFRESH_TOKEN の
+//     コメントを外して設定する
+//  3. 本関数を、golang.org/x/oauth2 の oauth2.Config + TokenSource を使う実装に戻す
+//     （このコミット以前の git 履歴を参照。#73 でサービスアカウント方式に切り替えた）
 func NewClient(ctx context.Context) (*Client, error) {
-	conf := &oauth2.Config{
-		ClientID:     os.Getenv("GOOGLE_CLIENT_ID"),
-		ClientSecret: os.Getenv("GOOGLE_CLIENT_SECRET"),
-		Endpoint:     google.Endpoint,
-		Scopes:       []string{driveapi.DriveReadonlyScope},
-	}
-
-	tok := &oauth2.Token{
-		RefreshToken: os.Getenv("GOOGLE_REFRESH_TOKEN"),
-	}
-
 	svc, err := driveapi.NewService(ctx,
-		option.WithTokenSource(conf.TokenSource(ctx, tok)),
+		option.WithScopes(driveapi.DriveReadonlyScope),
 	)
 	if err != nil {
 		return nil, err
