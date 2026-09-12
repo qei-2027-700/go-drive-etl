@@ -16,8 +16,8 @@ Google Drive に置かれた業務ファイルを自動回収し、スキーマ�
 |:---|:---|
 | 何を解くのか | 非エンジニアが Drive に置く雑多なファイル（MD / CSV / JSON / PDF）を、人手を介さず分析可能な形へ落とし込む |
 | なぜ Drive なのか | 現場との実運用インターフェースであり、「混沌とした外部ストレージからの回収」という実務課題をそのまま再現できる |
-| 中心にある技術 | goroutine ベースの Worker Pool、Protocol Buffers によるスキーマ定義、PostgreSQL による冪等性の担保 |
-| どこまで動くか | Drive → PostgreSQL → BigQuery の疎通は動作確認済み。通し実行のエントリポイント `cmd/worker` は実装中 |
+| 中心にある技術 | goroutine ベースの Worker Pool、Protocol Buffers によるスキーマ定義、Firestore による冪等性の担保 |
+| どこまで動くか | Drive → 状態管理 DB → BigQuery の疎通は動作確認済み。通し実行のエントリポイント `cmd/worker` は実装中 |
 
 ---
 
@@ -38,7 +38,7 @@ flowchart LR
         WP["Worker Pool<br/>goroutine × 5"]
     end
 
-    PG[("PostgreSQL<br/>状態管理・冪等性")]
+    STATE[("Firestore<br/>状態管理・冪等性")]
 
     subgraph BQ["BigQuery"]
         BRONZE["Bronze / etl_raw<br/>生データ"]
@@ -53,8 +53,8 @@ flowchart LR
 
     RAW --> EX --> DL --> PV --> LD
     WP -.並行制御.-> DL
-    EX <-->|checksum で重複排除| PG
-    LD --> PG
+    EX <-->|checksum で重複排除| STATE
+    LD --> STATE
     LD --> BRONZE --> SILVER --> GOLD
     GOLD --> OUT
     GOLD --> LOOKER
@@ -68,7 +68,7 @@ flowchart LR
 | Bronze | BigQuery `etl_raw` | 取得した生データをそのまま永続化する |
 | Silver | BigQuery View | Protocol Buffers 定義に沿った型安全な変換層。共通ロジックを View にカプセル化する |
 | Gold | BigQuery Mart | 可視化・レポート配信のための最終集計層 |
-| Metadata | PostgreSQL | 処理ステータス・チェックサム・リトライ回数のみを保持する。データ実体は持たない |
+| Metadata | Firestore | 処理ステータス・チェックサム・リトライ回数のみを保持する。データ実体は持たない。`STATE_BACKEND` で PostgreSQL に切り替えられる |
 
 詳細な設計判断は [docs/architecture.md](docs/architecture.md) にまとめている。
 
@@ -111,13 +111,13 @@ for i := 0; i < 5; i++ {
 
 ### 3. 冪等性
 
-同じファイルを二重にロードしないよう、状態は PostgreSQL 側に寄せている。
+同じファイルを二重にロードしないよう、状態は状態管理 DB 側に寄せている。
 
-- `drive_file_id` に UNIQUE 制約を張り、`Upsert` で再実行を吸収する
-- Drive が返す `md5Checksum` を保存し、内容が変わっていないファイルは再処理しない
+- Drive の `drive_file_id` をそのままドキュメント ID に使い、`Upsert` で再実行を吸収する。Firestore は同じ ID への書き込みが上書きになるため、重複判定の分岐を書く必要がない（PostgreSQL 実装では `drive_file_id` の UNIQUE 制約と `ON CONFLICT` が同じ役割を担う）
+- Drive が返す `md5Checksum` を保存している（保存までで、内容比較による再処理スキップは未実装）
 - ステータスは `pending → processing → done / failed` と遷移し、失敗したファイルだけを次回拾い直せる
 
-スキーマは [migrations/001_init.sql](migrations/001_init.sql)。
+実装は [internal/repository/firestore_repository.go](internal/repository/firestore_repository.go)。PostgreSQL 側のスキーマは [migrations/001_init.sql](migrations/001_init.sql)。
 
 ### 4. Protocol Buffers によるスキーマ管理
 
@@ -138,7 +138,7 @@ message FileRecord {
 
 ### 5. テスト容易性
 
-Drive / BigQuery / PostgreSQL の各クライアントはインターフェース越しに扱い、`mockgen` でモックを生成している（`make mock`）。外部サービスに接続せずに Worker Pool のロジックを検証できる。
+Drive / BigQuery / 状態管理 DB の各クライアントはインターフェース越しに扱い、`mockgen` でモックを生成している（`make mock`）。外部サービスに接続せずに Worker Pool のロジックを検証できる。
 
 ### 6. インフラと CI
 
@@ -156,7 +156,7 @@ BigQuery のデータセットとテーブルは Terraform で定義し、手作
 | データソース | Google Drive API v3 (OAuth2) |
 | DWH | BigQuery |
 | BI / 可視化 | Looker Studio（Phase 3 で導入予定） |
-| 状態管理 DB | PostgreSQL 16 (Docker) |
+| 状態管理 DB | Firestore（既定）/ PostgreSQL 16 (Docker) |
 | IaC | Terraform (Google Provider ~> 6.0) |
 | テスト | `go test` / `mockgen` |
 | CI/CD | GitHub Actions |
@@ -196,7 +196,10 @@ cp .env.example .env
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` / `GOOGLE_REFRESH_TOKEN` | Drive API の OAuth2 認証 |
 | `BIGQUERY_PROJECT_ID` / `BIGQUERY_DATASET_ID` | ロード先の BigQuery |
 | `DRIVE_FOLDER_ID` | 回収対象の Drive フォルダ |
-| `POSTGRES_DSN` | 状態管理 DB への接続文字列 |
+| `STATE_BACKEND` | 状態管理のバックエンド。`postgres` または `firestore`（省略時は `firestore`） |
+| `GOOGLE_CLOUD_PROJECT` | Firestore を使う場合の GCP プロジェクト |
+| `FIRESTORE_EMULATOR_HOST` | ローカルでエミュレータを使う場合のみ設定する（例: `localhost:8080`）。本番の Firestore に接続するときは必ず空にする |
+| `POSTGRES_DSN` | PostgreSQL を使う場合の接続文字列 |
 
 リフレッシュトークンは専用コマンドで取得する。
 
@@ -211,10 +214,23 @@ BigQuery は ADC で認証する。
 gcloud auth application-default login
 ```
 
-### 3. PostgreSQL の起動
+### 3. 状態管理 DB の起動
+
+状態管理は Firestore と PostgreSQL のどちらでも動く。`STATE_BACKEND` で切り替える。
+
+**Firestore（既定）** — ローカルではエミュレータを使う。GCP の認証も課金も発生しない。
 
 ```bash
-docker compose up -d
+docker compose up -d firestore
+# .env で FIRESTORE_EMULATOR_HOST=localhost:8080 を有効にする
+```
+
+本番の Firestore に向ける場合はエミュレータを起動せず、`FIRESTORE_EMULATOR_HOST` を空にしたうえで `GOOGLE_CLOUD_PROJECT` を設定する。データベース自体は次の手順の Terraform で作成される。
+
+**PostgreSQL** — `.env` に `STATE_BACKEND=postgres` を設定する。
+
+```bash
+docker compose up -d postgres
 docker compose exec -T postgres psql -U app -d app_db < migrations/001_init.sql
 ```
 
@@ -226,11 +242,13 @@ cp terraform.tfvars.example terraform.tfvars  # project_id などを設定
 terraform init && terraform apply
 ```
 
+BigQuery のデータセット / テーブルに加え、Firestore データベース（`(default)`）と Firestore API の有効化が適用される。
+
 ---
 
 ## デモ
 
-Drive → PostgreSQL → BigQuery の疎通を 1 コマンドで確認できる。
+Drive → 状態管理 DB → BigQuery の疎通を 1 コマンドで確認できる。
 
 ```bash
 go run ./cmd/verify_drive/
@@ -239,14 +257,14 @@ go run ./cmd/verify_drive/
 ```txt
 Drive 取得ファイル数: 3
 
-  ✓ PostgreSQL Upsert: 2026-W35-retrospective.md
-  ✓ PostgreSQL Upsert: sales_2026q2.csv
-  ✓ PostgreSQL Upsert: meeting-notes.pdf
-  PostgreSQL pending 件数: 3
+  ✓ 状態管理DB Upsert: 2026-W35-retrospective.md
+  ✓ 状態管理DB Upsert: sales_2026q2.csv
+  ✓ 状態管理DB Upsert: meeting-notes.pdf
+  状態管理DB pending 件数: 3
 
   ✓ BigQuery Insert: 3 件
 
---- Drive → PostgreSQL → BigQuery 疎通完了 ---
+--- Drive → 状態管理DB → BigQuery 疎通完了 ---
 ```
 
 テストとモックの生成は Make 経由で行う。
@@ -254,6 +272,19 @@ Drive 取得ファイル数: 3
 ```bash
 go test ./...
 make mock
+```
+
+リポジトリ層のテストは実物のバックエンドに対して実行する。環境変数が未設定なら自動でスキップされるため、`go test ./...` はそのままでも通る。
+
+```bash
+# Firestore（エミュレータ）
+docker compose up -d firestore
+FIRESTORE_EMULATOR_HOST=localhost:8080 go test ./internal/repository/
+
+# PostgreSQL（files テーブルを空にする）
+docker compose up -d postgres
+POSTGRES_TEST_DSN=postgres://app:password@localhost:5432/app_db?sslmode=disable \
+  go test ./internal/repository/
 ```
 
 > Looker Studio ダッシュボードと RAG Agent CLI の実行例は、該当フェーズの実装完了後に追記する。
@@ -266,7 +297,7 @@ make mock
 go-drive-etl/
 ├── cmd/
 │   ├── auth/           # OAuth2 リフレッシュトークン取得ツール
-│   ├── verify_drive/   # Drive → PostgreSQL → BigQuery 疎通確認ツール
+│   ├── verify_drive/   # Drive → 状態管理 DB → BigQuery 疎通確認ツール
 │   └── worker/         # ETL パイプライン本体（実装中）
 ├── internal/
 │   ├── bq/             # BigQuery クライアント
@@ -275,10 +306,10 @@ go-drive-etl/
 │   ├── etl/            # Worker Pool
 │   ├── parser/         # ファイルパーサー（実装中）
 │   ├── pb/             # Protocol Buffers 生成コード
-│   └── repository/     # PostgreSQL リポジトリ
+│   └── repository/     # 状態管理リポジトリ（Firestore / PostgreSQL）
 ├── proto/              # Protocol Buffers 定義
-├── migrations/         # DB マイグレーション SQL
-├── iac/                # Terraform（BigQuery データセット / テーブル）
+├── migrations/         # PostgreSQL マイグレーション SQL
+├── iac/                # Terraform（BigQuery / Firestore）
 └── docs/               # アーキテクチャ・設計ドキュメント
 ```
 
@@ -288,14 +319,14 @@ go-drive-etl/
 
 | 領域 | 状態 |
 |:---|:---:|
-| プロジェクト基盤 / PostgreSQL | ✅ |
+| プロジェクト基盤 / 状態管理 DB | ✅ |
 | Protocol Buffers スキーマ定義 | ✅ |
 | DB マイグレーション | ✅ |
-| PostgreSQL Repository | ✅ |
+| 状態管理 Repository（Firestore / PostgreSQL） | ✅ |
 | Google Drive クライアント | ✅ |
 | Worker Pool（並行処理） | ✅ |
 | BigQuery クライアント | ✅ |
-| Terraform（BigQuery） | ✅ |
+| Terraform（BigQuery / Firestore） | ✅ |
 | CI / セキュリティ監視 | ✅ |
 | ファイルパーサー（チャンク化） | 🚧 |
 | ETL パイプライン統合（`cmd/worker`） | 🚧 |

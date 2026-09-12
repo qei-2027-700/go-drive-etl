@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"cloud.google.com/go/bigquery"
-	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/joho/godotenv"
 	bqclient "github.com/qei-2027-700/go-drive-etl/internal/bq"
 	"github.com/qei-2027-700/go-drive-etl/internal/domain"
@@ -16,7 +15,15 @@ import (
 	"github.com/qei-2027-700/go-drive-etl/internal/repository"
 )
 
+// log.Fatalf は os.Exit を呼ぶため defer が走らない。
+// 後始末を確実に実行するため、処理は run に寄せて main ではエラーを受けるだけにする。
 func main() {
+	if err := run(); err != nil {
+		log.Fatal(err)
+	}
+}
+
+func run() error {
 	_ = godotenv.Load()
 
 	ctx := context.Background()
@@ -24,30 +31,28 @@ func main() {
 	// ① Drive: ファイル一覧取得
 	driveClient, err := drive.NewClient(ctx)
 	if err != nil {
-		log.Fatalf("Drive クライアントの初期化に失敗: %v", err)
+		return fmt.Errorf("Drive クライアントの初期化に失敗: %w", err)
 	}
 
 	folderID := os.Getenv("DRIVE_FOLDER_ID")
 	files, err := driveClient.ListFiles(ctx, folderID)
 	if err != nil {
-		log.Fatalf("ファイル一覧の取得に失敗: %v", err)
+		return fmt.Errorf("ファイル一覧の取得に失敗: %w", err)
 	}
 
 	if len(files) == 0 {
 		fmt.Println("ファイルが見つかりませんでした。")
-		return
+		return nil
 	}
 
 	fmt.Printf("Drive 取得ファイル数: %d\n\n", len(files))
 
-	// ② PostgreSQL: Upsert
-	db, err := pgxpool.New(ctx, os.Getenv("POSTGRES_DSN"))
+	// ② 状態管理DB: Upsert
+	repo, closeRepo, err := repository.New(ctx)
 	if err != nil {
-		log.Fatalf("DB 接続に失敗: %v", err)
+		return fmt.Errorf("リポジトリ初期化に失敗: %w", err)
 	}
-	defer db.Close()
-
-	repo := repository.NewFileRepository(db)
+	defer closeRepo()
 
 	for _, f := range files {
 		record := &domain.File{
@@ -61,19 +66,19 @@ func main() {
 			log.Printf("Upsert 失敗 [%s]: %v", f.Name, err)
 			continue
 		}
-		fmt.Printf("  ✓ PostgreSQL Upsert: %s\n", f.Name)
+		fmt.Printf("  ✓ 状態管理DB Upsert: %s\n", f.Name)
 	}
 
 	pending, err := repo.ListPending(ctx)
 	if err != nil {
-		log.Fatalf("ListPending 失敗: %v", err)
+		return fmt.Errorf("ListPending 失敗: %w", err)
 	}
-	fmt.Printf("  PostgreSQL pending 件数: %d\n\n", len(pending))
+	fmt.Printf("  状態管理DB pending 件数: %d\n\n", len(pending))
 
 	// ③ BigQuery: Insert
 	bqClient, err := bqclient.NewClient(ctx)
 	if err != nil {
-		log.Fatalf("BigQuery クライアントの初期化に失敗: %v", err)
+		return fmt.Errorf("BigQuery クライアントの初期化に失敗: %w", err)
 	}
 	defer bqClient.Close()
 
@@ -90,9 +95,11 @@ func main() {
 	}
 
 	if err := bqClient.InsertRows(ctx, "drive_files", rows); err != nil {
-		log.Fatalf("BigQuery Insert 失敗: %v", err)
+		return fmt.Errorf("BigQuery Insert 失敗: %w", err)
 	}
 
 	fmt.Printf("  ✓ BigQuery Insert: %d 件\n", len(rows))
-	fmt.Println("\n--- Drive → PostgreSQL → BigQuery 疎通完了 ---")
+	fmt.Println("\n--- Drive → 状態管理DB → BigQuery 疎通完了 ---")
+
+	return nil
 }

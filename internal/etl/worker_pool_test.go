@@ -48,7 +48,6 @@ func TestRun_DownloadFile(t *testing.T) {
 	ctx := context.Background()
 
 	file := &domain.File{
-		ID:          1,
 		DriveFileID: "test-drive-id",
 	}
 
@@ -78,7 +77,6 @@ func TestRun_DownloadFile_Failed(t *testing.T) {
 	ctx := context.Background()
 
 	file := &domain.File{
-		ID:          1,
 		DriveFileID: "test-drive-id",
 	}
 
@@ -91,7 +89,7 @@ func TestRun_DownloadFile_Failed(t *testing.T) {
 		Return(nil, errors.New("network error"))
 
 	repo.EXPECT().
-		UpdateStatus(gomock.Any(), int64(1), domain.SyncStatusFailed).
+		UpdateStatus(gomock.Any(), "test-drive-id", domain.SyncStatusFailed).
 		Return(nil)
 
 	err := Run(ctx, repo, driveClient, bqClient)
@@ -115,7 +113,7 @@ func TestRun_CtxCancel(t *testing.T) {
 	// バッファ(100)を超える件数でキャンセルパスを確実に通す
 	files := make([]*domain.File, 101)
 	for i := range files {
-		files[i] = &domain.File{ID: int64(i + 1), DriveFileID: fmt.Sprintf("drive-id-%d", i)}
+		files[i] = &domain.File{DriveFileID: fmt.Sprintf("drive-id-%d", i)}
 	}
 
 	repo.EXPECT().ListPending(gomock.Any()).Return(files, nil)

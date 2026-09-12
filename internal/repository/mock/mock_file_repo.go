@@ -57,17 +57,17 @@ func (mr *MockFileRepoMockRecorder) ListPending(ctx any) *gomock.Call {
 }
 
 // UpdateStatus mocks base method.
-func (m *MockFileRepo) UpdateStatus(ctx context.Context, fileID int64, status domain.SyncStatus) error {
+func (m *MockFileRepo) UpdateStatus(ctx context.Context, driveFileID string, status domain.SyncStatus) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "UpdateStatus", ctx, fileID, status)
+	ret := m.ctrl.Call(m, "UpdateStatus", ctx, driveFileID, status)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // UpdateStatus indicates an expected call of UpdateStatus.
-func (mr *MockFileRepoMockRecorder) UpdateStatus(ctx, fileID, status any) *gomock.Call {
+func (mr *MockFileRepoMockRecorder) UpdateStatus(ctx, driveFileID, status any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateStatus", reflect.TypeOf((*MockFileRepo)(nil).UpdateStatus), ctx, fileID, status)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateStatus", reflect.TypeOf((*MockFileRepo)(nil).UpdateStatus), ctx, driveFileID, status)
 }
 
 // Upsert mocks base method.

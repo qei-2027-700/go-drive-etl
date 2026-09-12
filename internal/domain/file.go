@@ -12,7 +12,6 @@ const (
 )
 
 type File struct {
-	ID          int64
 	DriveFileID string
 	Path        string
 	Checksum    string
@@ -21,6 +20,7 @@ type File struct {
 	UpdatedAt   time.Time
 }
 
+// TODO: Issue #63 で File.ID を廃止したため、FileID は Phase 2 で DriveFileID string に置き換える
 type Chunk struct {
 	ID              int64
 	FileID          int64
