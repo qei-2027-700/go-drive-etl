@@ -27,7 +27,9 @@ func (r *FileRepository) Upsert(ctx context.Context, f *domain.File) error {
 		VALUES ($1, $2, $3, $4, $5, NOW())
 		ON CONFLICT (drive_file_id)
 		DO UPDATE SET
+				path        = EXCLUDED.path,
 				checksum    = EXCLUDED.checksum,
+				mime_type   = EXCLUDED.mime_type,
 				sync_status = EXCLUDED.sync_status,
 				updated_at  = NOW()
 		`, f.DriveFileID, f.Path, f.Checksum, f.MimeType, f.SyncStatus)

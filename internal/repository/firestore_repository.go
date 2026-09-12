@@ -56,7 +56,6 @@ func (r *FirestoreFileRepository) UpdateStatus(ctx context.Context, driveFileID 
 	return err
 }
 
-// TODO(#63): sync_status == pending を Where で引き、fileDoc から domain.File に詰め替える。
 // 未着手のタスクを全部持ってくる
 func (r *FirestoreFileRepository) ListPending(ctx context.Context) ([]*domain.File, error) {
 
