@@ -153,7 +153,7 @@ BigQuery のデータセットとテーブルは Terraform で定義し、手作
 | 言語 | Go 1.26 |
 | 並行処理 | goroutine / Worker Pool / `context.Context` |
 | スキーマ管理 | Protocol Buffers |
-| データソース | Google Drive API v3 (OAuth2) |
+| データソース | Google Drive API v3（サービスアカウント / ADC） |
 | DWH | BigQuery |
 | BI / 可視化 | Looker Studio（Phase 3 で導入予定） |
 | 状態管理 DB | Firestore（既定）/ PostgreSQL 16 (Docker) |
@@ -193,7 +193,7 @@ cp .env.example .env
 
 | 変数 | 用途 |
 |:---|:---|
-| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` / `GOOGLE_REFRESH_TOKEN` | Drive API の OAuth2 認証 |
+| `GOOGLE_APPLICATION_CREDENTIALS` | Drive API の認証に使うサービスアカウントの JSON キーへのパス |
 | `BIGQUERY_PROJECT_ID` / `BIGQUERY_DATASET_ID` | ロード先の BigQuery |
 | `DRIVE_FOLDER_ID` | 回収対象の Drive フォルダ |
 | `STATE_BACKEND` | 状態管理のバックエンド。`postgres` または `firestore`（省略時は `firestore`） |
@@ -201,18 +201,23 @@ cp .env.example .env
 | `FIRESTORE_EMULATOR_HOST` | ローカルでエミュレータを使う場合のみ設定する（例: `localhost:8080`）。本番の Firestore に接続するときは必ず空にする |
 | `POSTGRES_DSN` | PostgreSQL を使う場合の接続文字列 |
 
-リフレッシュトークンは専用コマンドで取得する。
+#### Drive API: サービスアカウントの準備
 
-```bash
-go run ./cmd/auth/
-# 表示された URL をブラウザで開いて認証し、出力された値を GOOGLE_REFRESH_TOKEN に設定する
-```
+Drive API は OAuth2 のユーザー委譲ではなく、サービスアカウントで認証する。OAuth ユーザー委譲は、同意画面が「テスト中」ステータスの間リフレッシュトークンが 7 日で失効し、常時稼働に向かないため採用していない（経緯は [Issue #73](https://github.com/qei-2027-700/go-drive-etl/issues/73) を参照）。
 
-BigQuery は ADC で認証する。
+1. GCP コンソールでサービスアカウントを作成する（例: `etl-worker`）
+2. 「キー」タブから JSON キーを作成してダウンロードする。**JSON キーはパスワード同等の機密情報なので、リポジトリ外に保存し `.gitignore` で除外すること**
+3. 対象の Drive フォルダ（`DRIVE_FOLDER_ID`）を、サービスアカウントのメールアドレス（`<name>@<project-id>.iam.gserviceaccount.com`）に**閲覧者権限で共有する**。サービスアカウントは独立した利用者のため、共有を忘れるとファイルが 1 件も見えない
+4. ダウンロードした JSON キーのパスを `.env` の `GOOGLE_APPLICATION_CREDENTIALS` に設定する
+
+BigQuery / Firestore は引き続き ADC（Application Default Credentials）で認証する。
 
 ```bash
 gcloud auth application-default login
 ```
+
+> **OAuth2 ユーザー委譲方式（フォールバック）**
+> サービスアカウント方式が使えない環境向けに、コードと手順は残してある。`.env.example` の `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` / `GOOGLE_REFRESH_TOKEN` のコメントを外し、`go run ./cmd/auth/` でリフレッシュトークンを取得する。有効化する場合は `internal/drive/client.go` の `NewClient` も OAuth 版に戻す必要がある（同ファイルのコメントに手順を記載）。通常は使わない。
 
 ### 3. 状態管理 DB の起動
 
@@ -296,7 +301,7 @@ POSTGRES_TEST_DSN=postgres://app:password@localhost:5432/app_db?sslmode=disable 
 ```txt
 go-drive-etl/
 ├── cmd/
-│   ├── auth/           # OAuth2 リフレッシュトークン取得ツール
+│   ├── auth/           # OAuth2 リフレッシュトークン取得ツール（フォールバック用、通常は未使用）
 │   ├── verify_drive/   # Drive → 状態管理 DB → BigQuery 疎通確認ツール
 │   └── worker/         # ETL パイプライン本体（実装中）
 ├── internal/

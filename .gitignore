@@ -5,6 +5,12 @@
 .antigravitycli/
 /verify_drive
 
+# サービスアカウントの JSON キー（パスワード同等の機密情報）
+# GCP がダウンロード時に付けるファイル名は <project-id>-<random>.json でパターン化しにくいため、
+# リポジトリ内に置く場合は必ず secrets/ 配下に置くこと（推奨: リポジトリ外に置く）。
+/secrets/
+*.serviceaccount.json
+
 # Terraform
 iac/terraform.tfvars
 iac/.terraform/
