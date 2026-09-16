@@ -25,6 +25,16 @@ body:
         - [ ] go test ./... が通る
     validations:
       required: true
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: 依存関係
+      description: "依存がある場合は `Blocked by: #123`、後続をブロックする場合は `Blocks: #456` と記載する。なければ `None`。"
+      value: |
+        Blocked by: None
+        Blocks: None
+    validations:
+      required: true
   - type: dropdown
     id: model
     attributes:

@@ -49,6 +49,17 @@
 *   タイトルは動詞から始めてください（例: `Implement Worker Pool`, `Fix ListPending bug`）。
 *   ラベルが存在しない場合は、`gh label create --repo qei-2027-700/go-drive-etl` で先に作成してから起票してください。
 
+### 依存関係の表記
+
+Issue 本文に次の定型行を置く。GitHub の Issue 番号を使い、依存がない場合も `None` を明記する。
+
+```txt
+Blocked by: #123, #456
+Blocks: #789
+```
+
+`Blocked by` は着手・完了の前提となる Issue、`Blocks` はこの Issue の完了を待つ後続 Issue を示す。依存の追加・解消時は両側の Issue を更新する。
+
 ---
 
 ## 2. Pull Request の作成 (`gh-pr`)
@@ -110,6 +121,14 @@ PRタイトルは Conventional Commits 形式に従います：
 *   `chore: <タイトル>` (雑務・依存関係更新)
 *   `docs: <タイトル>` (ドキュメント)
 *   `refactor: <タイトル>` (リファクタ)
+
+### マージ条件
+
+PR は次のすべてを満たしてからマージする。
+
+- CI がすべて green である
+- 変更者または別のレビュアーが最終差分をレビューした
+- 関連 Issue の完了条件を満たし、PR 本文に `Closes #<Issue番号>` がある
 
 ---
 
