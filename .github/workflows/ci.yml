@@ -53,8 +53,15 @@ jobs:
           go-version-file: "go.mod"
           cache: true
 
-      - name: go test
-        run: go test ./...
+      - name: go test with coverage
+        run: |
+          go test -cover ./... | tee coverage.txt
+          {
+            echo "## Test coverage"
+            echo "\`\`\`text"
+            cat coverage.txt
+            echo "\`\`\`"
+          } >> "$GITHUB_STEP_SUMMARY"
 
   build:
     name: Build
