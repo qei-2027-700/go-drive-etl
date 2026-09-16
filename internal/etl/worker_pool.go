@@ -4,7 +4,9 @@ import (
 	"context"
 	"log"
 	"sync"
+	"time"
 
+	"cloud.google.com/go/bigquery"
 	"github.com/qei-2027-700/go-drive-etl/internal/bq"
 	"github.com/qei-2027-700/go-drive-etl/internal/domain"
 	"github.com/qei-2027-700/go-drive-etl/internal/drive"
@@ -59,7 +61,32 @@ func Run(
 						}
 						continue
 					}
-					// TODO: BQ 保存 + UpdateStatus(Done) は Phase 2 で実装する
+
+					rows := []map[string]bigquery.Value{
+						{
+							"drive_file_id": file.DriveFileID,
+							"path":          file.Path,
+							"checksum":      file.Checksum,
+							"mime_type":     file.MimeType,
+							"sync_status":   string(domain.SyncStatusDone),
+							"updated_at":    time.Now().UTC(),
+						},
+					}
+					if err := bqClient.InsertRows(ctx, "drive_files", rows); err != nil {
+						if ctx.Err() != nil {
+							return
+						}
+
+						log.Printf("BigQuery InsertRows failed: fileID=%s err=%v", file.DriveFileID, err)
+						if statusErr := repo.UpdateStatus(ctx, file.DriveFileID, domain.SyncStatusFailed); statusErr != nil {
+							log.Printf("UpdateStatus failed: fileID=%s err=%v", file.DriveFileID, statusErr)
+						}
+						continue
+					}
+
+					if err := repo.UpdateStatus(ctx, file.DriveFileID, domain.SyncStatusDone); err != nil {
+						log.Printf("UpdateStatus failed: fileID=%s err=%v", file.DriveFileID, err)
+					}
 
 				case <-ctx.Done():
 					return
