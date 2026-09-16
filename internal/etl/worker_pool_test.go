@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"testing"
 
+	"cloud.google.com/go/bigquery"
 	"github.com/qei-2027-700/go-drive-etl/internal/domain"
 	"go.uber.org/mock/gomock"
 
@@ -36,8 +37,8 @@ func TestRun_Success(t *testing.T) {
 	}
 }
 
-// ListPendingでファイルが1件帰ってきたとき、ワーカーがDownloadFileを呼び出すこと
-func TestRun_DownloadFile(t *testing.T) {
+// ListPendingでファイルが1件帰ってきたとき、ワーカーがダウンロードして BigQuery へロードすること
+func TestRun_DownloadAndLoadFile(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
@@ -49,6 +50,9 @@ func TestRun_DownloadFile(t *testing.T) {
 
 	file := &domain.File{
 		DriveFileID: "test-drive-id",
+		Path:        "report.csv",
+		Checksum:    "checksum",
+		MimeType:    "text/csv",
 	}
 
 	repo.EXPECT().
@@ -58,9 +62,46 @@ func TestRun_DownloadFile(t *testing.T) {
 	driveClient.EXPECT().
 		DownloadFile(gomock.Any(), "test-drive-id").
 		Return([]byte("data"), nil)
+	bqClient.EXPECT().
+		InsertRows(gomock.Any(), "drive_files", gomock.Any()).
+		DoAndReturn(func(_ context.Context, table string, rows []map[string]bigquery.Value) error {
+			if len(rows) != 1 {
+				t.Fatalf("expected one row, got %d", len(rows))
+			}
+			if rows[0]["drive_file_id"] != file.DriveFileID || rows[0]["path"] != file.Path {
+				t.Fatalf("unexpected row: %#v", rows[0])
+			}
+			if rows[0]["sync_status"] != string(domain.SyncStatusDone) {
+				t.Fatalf("expected done status, got %#v", rows[0]["sync_status"])
+			}
+			return nil
+		})
+	repo.EXPECT().
+		UpdateStatus(gomock.Any(), "test-drive-id", domain.SyncStatusDone).
+		Return(nil)
 
 	err := Run(ctx, repo, driveClient, bqClient)
 	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+// BigQuery へのロードが失敗したとき、ステータスが SyncStatusFailed に更新されること
+func TestRun_LoadFile_Failed(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	repo := repoMock.NewMockFileRepo(ctrl)
+	driveClient := driveMock.NewMockDriveClient(ctrl)
+	bqClient := bqMock.NewMockBQClient(ctrl)
+
+	file := &domain.File{DriveFileID: "test-drive-id"}
+	repo.EXPECT().ListPending(gomock.Any()).Return([]*domain.File{file}, nil)
+	driveClient.EXPECT().DownloadFile(gomock.Any(), file.DriveFileID).Return([]byte("data"), nil)
+	bqClient.EXPECT().InsertRows(gomock.Any(), "drive_files", gomock.Any()).Return(errors.New("BigQuery error"))
+	repo.EXPECT().UpdateStatus(gomock.Any(), file.DriveFileID, domain.SyncStatusFailed).Return(nil)
+
+	if err := Run(context.Background(), repo, driveClient, bqClient); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
