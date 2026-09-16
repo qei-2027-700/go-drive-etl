@@ -24,15 +24,16 @@ func NewFileRepository(db *pgxpool.Pool) *FileRepository {
 func (r *FileRepository) Upsert(ctx context.Context, f *domain.File) error {
 	_, err := r.db.Exec(ctx, `
 		INSERT INTO files (drive_file_id, path, checksum, mime_type, sync_status, updated_at)
-		VALUES ($1, $2, $3, $4, $5, NOW())
+		VALUES ($1, $2, $3, $4, 'pending', NOW())
 		ON CONFLICT (drive_file_id)
 		DO UPDATE SET
 				path        = EXCLUDED.path,
 				checksum    = EXCLUDED.checksum,
 				mime_type   = EXCLUDED.mime_type,
-				sync_status = EXCLUDED.sync_status,
+				sync_status = 'pending',
 				updated_at  = NOW()
-		`, f.DriveFileID, f.Path, f.Checksum, f.MimeType, f.SyncStatus)
+		WHERE files.checksum = '' OR EXCLUDED.checksum = '' OR files.checksum <> EXCLUDED.checksum
+		`, f.DriveFileID, f.Path, f.Checksum, f.MimeType)
 
 	return err
 }
