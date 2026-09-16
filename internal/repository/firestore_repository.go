@@ -7,6 +7,8 @@ import (
 	"cloud.google.com/go/firestore"
 	"github.com/qei-2027-700/go-drive-etl/internal/domain"
 	"google.golang.org/api/iterator"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 const filesCollection = "files"
@@ -35,18 +37,40 @@ type fileDoc struct {
 	UpdatedAt   time.Time `firestore:"updated_at,serverTimestamp"`
 }
 
-// タスクを登録する（未着手として書き込む）
+// Upsert は新規ファイルを pending として登録する。既存ファイルは checksum が変わった
+// 場合だけ pending に戻す。md5Checksum が空の Google Workspace ファイルは変更を比較
+// できないため、常に再処理対象として更新する。
 func (r *FirestoreFileRepository) Upsert(ctx context.Context, f *domain.File) error {
-	_, err := r.client.Collection(filesCollection).Doc(f.DriveFileID).Set(ctx, fileDoc{
+	docRef := r.client.Collection(filesCollection).Doc(f.DriveFileID)
+	return r.client.RunTransaction(ctx, func(ctx context.Context, tx *firestore.Transaction) error {
+		doc, err := tx.Get(docRef)
+		if err != nil {
+			if status.Code(err) != codes.NotFound {
+				return err
+			}
+			return tx.Set(docRef, newFileDoc(f))
+		}
+
+		var existing fileDoc
+		if err := doc.DataTo(&existing); err != nil {
+			return err
+		}
+		if f.Checksum != "" && existing.Checksum == f.Checksum {
+			return nil
+		}
+		return tx.Set(docRef, newFileDoc(f))
+	})
+}
+
+func newFileDoc(f *domain.File) fileDoc {
+	return fileDoc{
 		DriveFileID: f.DriveFileID,
 		Path:        f.Path,
 		Checksum:    f.Checksum,
 		MimeType:    f.MimeType,
-		SyncStatus:  string(f.SyncStatus),
+		SyncStatus:  string(domain.SyncStatusPending),
 		// time.Now()などは不要
-	})
-
-	return err
+	}
 }
 
 // タスクに完了・失敗ステータスを適用する

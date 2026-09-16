@@ -31,9 +31,9 @@
 
 ### Firestore（既定）
 
-コレクションは `files` ひとつ。**ドキュメント ID に Drive の `drive_file_id` をそのまま使う**のが設計の核心で、同じファイルを再取得しても同じドキュメントを指すため、行が重複しないことが構造として保証される。`Upsert` は `Set` 一発で済み、重複判定のロジックを書く必要がない。
+コレクションは `files` ひとつ。**ドキュメント ID に Drive の `drive_file_id` をそのまま使う**ため、同じファイルを再取得しても同じドキュメントを指し、重複は構造として防がれる。`Upsert` は Firestore トランザクション内で既存の checksum を比較する。非空の checksum が同じなら何も書き換えず、`done` を含む既存の `sync_status` を維持する。checksum が変わった場合はメタデータを更新し `pending` に戻すため、更新ファイルだけが再処理される。PostgreSQL 実装も同じ意味になるよう `ON CONFLICT ... WHERE` で比較する。
 
-ただしこれは「ドキュメントが重複しない」ことの保証であって、処理の冪等性（同じファイルを二度処理しない）はまだ担保していない。`Upsert` は `sync_status` も含めてドキュメントを置き換えるため、`done` になったファイルを再度 `Upsert` すると `pending` に戻る。また `checksum` は保存しているだけで、比較して取り込みを省く処理は未実装。どちらも `UpdateStatus(done)` を呼ぶ本体（#6 の `cmd/worker`）と同時に設計する。
+Google Docs / Sheets / Slides のように Drive が `md5Checksum` を返さないファイルは変更を比較できない。この場合は checksum を空文字列として保存し、検出するたびに `pending` に戻して再処理する。
 
 ```txt
 files/{drive_file_id}

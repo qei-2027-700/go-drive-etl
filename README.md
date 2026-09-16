@@ -113,8 +113,9 @@ for i := 0; i < 5; i++ {
 
 同じファイルを二重にロードしないよう、状態は状態管理 DB 側に寄せている。
 
-- Drive の `drive_file_id` をそのままドキュメント ID に使い、`Upsert` で再実行を吸収する。Firestore は同じ ID への書き込みが上書きになるため、重複判定の分岐を書く必要がない（PostgreSQL 実装では `drive_file_id` の UNIQUE 制約と `ON CONFLICT` が同じ役割を担う）
-- Drive が返す `md5Checksum` を保存している（保存までで、内容比較による再処理スキップは未実装）
+- Drive の `drive_file_id` を状態レコードの ID に使う。Firestore はトランザクション、PostgreSQL は `ON CONFLICT` により、同じ ID の重複登録を防ぐ
+- Drive が返す非空の `md5Checksum` を比較し、同一なら状態を変更せず再処理をスキップする。値が変われば `pending` に戻して再処理する
+- Google Docs / Sheets / Slides など `md5Checksum` が空のファイルは比較できないため、検出するたびに `pending` に戻して再処理する
 - ステータスは `pending → processing → done / failed` と遷移し、失敗したファイルだけを次回拾い直せる
 
 実装は [internal/repository/firestore_repository.go](internal/repository/firestore_repository.go)。PostgreSQL 側のスキーマは [migrations/001_init.sql](migrations/001_init.sql)。

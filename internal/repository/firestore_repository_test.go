@@ -166,9 +166,8 @@ func TestFirestore_UpdateStatusPreservesOtherFields(t *testing.T) {
 	}
 }
 
-// 同じ drive_file_id への Upsert がドキュメントを増やさず上書きすること。
-// ドキュメント ID に drive_file_id を使う設計の核心。
-func TestFirestore_UpsertIsIdempotent(t *testing.T) {
+// checksum が変わらない done のファイルは pending に戻さないこと。
+func TestFirestore_UpsertUnchangedPreservesStatus(t *testing.T) {
 	repo := newTestRepo(t)
 	ctx := context.Background()
 
@@ -177,7 +176,64 @@ func TestFirestore_UpsertIsIdempotent(t *testing.T) {
 		t.Fatalf("Upsert(1回目): %v", err)
 	}
 
-	f.Checksum = "xyz789"
+	if err := repo.UpdateStatus(ctx, f.DriveFileID, domain.SyncStatusDone); err != nil {
+		t.Fatalf("UpdateStatus(done): %v", err)
+	}
+	if err := repo.Upsert(ctx, f); err != nil {
+		t.Fatalf("Upsert(2回目): %v", err)
+	}
+
+	got, err := repo.ListPending(ctx)
+	if err != nil {
+		t.Fatalf("ListPending: %v", err)
+	}
+	if len(got) != 0 {
+		t.Fatalf("checksum が同じ done のファイルが pending に戻った: got %d 件", len(got))
+	}
+}
+
+// checksum が変わったファイルは pending に戻り、メタデータを更新すること。
+func TestFirestore_UpsertChangedChecksumResetsToPending(t *testing.T) {
+	repo := newTestRepo(t)
+	ctx := context.Background()
+
+	f := testFile()
+	if err := repo.Upsert(ctx, f); err != nil {
+		t.Fatalf("Upsert(1回目): %v", err)
+	}
+	if err := repo.UpdateStatus(ctx, f.DriveFileID, domain.SyncStatusDone); err != nil {
+		t.Fatalf("UpdateStatus(done): %v", err)
+	}
+	f.Path, f.Checksum, f.MimeType, f.SyncStatus = "renamed.md", "xyz789", "text/plain", domain.SyncStatusDone
+	if err := repo.Upsert(ctx, f); err != nil {
+		t.Fatalf("Upsert(変更後): %v", err)
+	}
+
+	got, err := repo.ListPending(ctx)
+	if err != nil {
+		t.Fatalf("ListPending: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("checksum が変わったファイルが pending ではない: got %d 件", len(got))
+	}
+	if got[0].Path != f.Path || got[0].Checksum != f.Checksum || got[0].MimeType != f.MimeType {
+		t.Errorf("変更後のメタデータが保存されていない: %+v", *got[0])
+	}
+}
+
+// checksum が空のファイルは比較できないため、毎回再処理対象にすること。
+func TestFirestore_UpsertEmptyChecksumResetsToPending(t *testing.T) {
+	repo := newTestRepo(t)
+	ctx := context.Background()
+
+	f := testFile()
+	f.Checksum = ""
+	if err := repo.Upsert(ctx, f); err != nil {
+		t.Fatalf("Upsert(1回目): %v", err)
+	}
+	if err := repo.UpdateStatus(ctx, f.DriveFileID, domain.SyncStatusDone); err != nil {
+		t.Fatalf("UpdateStatus(done): %v", err)
+	}
 	if err := repo.Upsert(ctx, f); err != nil {
 		t.Fatalf("Upsert(2回目): %v", err)
 	}
@@ -187,10 +243,7 @@ func TestFirestore_UpsertIsIdempotent(t *testing.T) {
 		t.Fatalf("ListPending: %v", err)
 	}
 	if len(got) != 1 {
-		t.Fatalf("同じ ID の Upsert でドキュメントが増えた: want 1, got %d", len(got))
-	}
-	if got[0].Checksum != "xyz789" {
-		t.Errorf("Checksum が更新されていない: want %q, got %q", "xyz789", got[0].Checksum)
+		t.Fatalf("checksum が空のファイルが pending に戻らない: got %d 件", len(got))
 	}
 }
 

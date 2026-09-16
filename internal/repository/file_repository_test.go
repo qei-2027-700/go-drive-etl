@@ -133,9 +133,8 @@ func TestPostgres_UpdateStatusPreservesOtherFields(t *testing.T) {
 	}
 }
 
-// 同じ drive_file_id への Upsert が行を増やさず、Firestore の Set と同じ範囲を更新すること。
-// ON CONFLICT DO UPDATE に path と mime_type を含めているのはこの一致のため。
-func TestPostgres_UpsertIsIdempotent(t *testing.T) {
+// checksum が変わらない done のファイルは pending に戻さないこと。
+func TestPostgres_UpsertUnchangedPreservesStatus(t *testing.T) {
 	repo := newTestPostgresRepo(t)
 	ctx := context.Background()
 
@@ -144,9 +143,64 @@ func TestPostgres_UpsertIsIdempotent(t *testing.T) {
 		t.Fatalf("Upsert(1回目): %v", err)
 	}
 
-	f.Path = "renamed.md"
-	f.Checksum = "xyz789"
-	f.MimeType = "text/plain"
+	if err := repo.UpdateStatus(ctx, f.DriveFileID, domain.SyncStatusDone); err != nil {
+		t.Fatalf("UpdateStatus(done): %v", err)
+	}
+	if err := repo.Upsert(ctx, f); err != nil {
+		t.Fatalf("Upsert(2回目): %v", err)
+	}
+
+	got, err := repo.ListPending(ctx)
+	if err != nil {
+		t.Fatalf("ListPending: %v", err)
+	}
+	if len(got) != 0 {
+		t.Fatalf("checksum が同じ done のファイルが pending に戻った: got %d 件", len(got))
+	}
+}
+
+// checksum が変わったファイルは pending に戻り、メタデータを更新すること。
+func TestPostgres_UpsertChangedChecksumResetsToPending(t *testing.T) {
+	repo := newTestPostgresRepo(t)
+	ctx := context.Background()
+
+	f := testFile()
+	if err := repo.Upsert(ctx, f); err != nil {
+		t.Fatalf("Upsert(1回目): %v", err)
+	}
+	if err := repo.UpdateStatus(ctx, f.DriveFileID, domain.SyncStatusDone); err != nil {
+		t.Fatalf("UpdateStatus(done): %v", err)
+	}
+	f.Path, f.Checksum, f.MimeType, f.SyncStatus = "renamed.md", "xyz789", "text/plain", domain.SyncStatusDone
+	if err := repo.Upsert(ctx, f); err != nil {
+		t.Fatalf("Upsert(変更後): %v", err)
+	}
+
+	got, err := repo.ListPending(ctx)
+	if err != nil {
+		t.Fatalf("ListPending: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("checksum が変わったファイルが pending ではない: got %d 件", len(got))
+	}
+	if got[0].Path != f.Path || got[0].Checksum != f.Checksum || got[0].MimeType != f.MimeType {
+		t.Errorf("変更後のメタデータが保存されていない: %+v", *got[0])
+	}
+}
+
+// checksum が空のファイルは比較できないため、毎回再処理対象にすること。
+func TestPostgres_UpsertEmptyChecksumResetsToPending(t *testing.T) {
+	repo := newTestPostgresRepo(t)
+	ctx := context.Background()
+
+	f := testFile()
+	f.Checksum = ""
+	if err := repo.Upsert(ctx, f); err != nil {
+		t.Fatalf("Upsert(1回目): %v", err)
+	}
+	if err := repo.UpdateStatus(ctx, f.DriveFileID, domain.SyncStatusDone); err != nil {
+		t.Fatalf("UpdateStatus(done): %v", err)
+	}
 	if err := repo.Upsert(ctx, f); err != nil {
 		t.Fatalf("Upsert(2回目): %v", err)
 	}
@@ -156,16 +210,7 @@ func TestPostgres_UpsertIsIdempotent(t *testing.T) {
 		t.Fatalf("ListPending: %v", err)
 	}
 	if len(got) != 1 {
-		t.Fatalf("同じ ID の Upsert で行が増えた: want 1, got %d", len(got))
-	}
-	if got[0].Path != f.Path {
-		t.Errorf("Path が更新されていない: want %q, got %q", f.Path, got[0].Path)
-	}
-	if got[0].Checksum != f.Checksum {
-		t.Errorf("Checksum が更新されていない: want %q, got %q", f.Checksum, got[0].Checksum)
-	}
-	if got[0].MimeType != f.MimeType {
-		t.Errorf("MimeType が更新されていない: want %q, got %q", f.MimeType, got[0].MimeType)
+		t.Fatalf("checksum が空のファイルが pending に戻らない: got %d 件", len(got))
 	}
 }
 
