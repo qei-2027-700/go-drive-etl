@@ -86,6 +86,50 @@ func TestRun_DownloadAndLoadFile(t *testing.T) {
 	}
 }
 
+// Google Docsの場合は、DownloadFileではなく、text/plain で
+// DownloadGoogleWorkspaceFile を呼ぶこと
+func TestRun_ExportGoogleDocument(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	repo := repoMock.NewMockFileRepo(ctrl)
+	driveClient := driveMock.NewMockDriveClient(ctrl)
+	bqClient := bqMock.NewMockBQClient(ctrl)
+
+	file := &domain.File{
+		DriveFileID: "google-doc-id",
+		Path:        "meeting-notes",
+		Checksum:    "",
+		MimeType:    "application/vnd.google-apps.document",
+	}
+
+	repo.EXPECT().
+		ListPending(gomock.Any()).
+		Return([]*domain.File{file}, nil)
+
+	// 今回確認したい箇所
+	driveClient.EXPECT().
+		DownloadGoogleWorkspaceFile(
+			gomock.Any(),
+			"google-doc-id",
+			"text/plain",
+		).
+		Return([]byte("document contents"), nil)
+
+	bqClient.EXPECT().
+		InsertRows(gomock.Any(), "drive_files", gomock.Any()).
+		Return(nil)
+
+	repo.EXPECT().
+		UpdateStatus(gomock.Any(), "google-doc-id", domain.SyncStatusDone).
+		Return(nil)
+
+	err := Run(context.Background(), repo, driveClient, bqClient)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
 // BigQuery へのロードが失敗したとき、ステータスが SyncStatusFailed に更新されること
 func TestRun_LoadFile_Failed(t *testing.T) {
 	ctrl := gomock.NewController(t)

@@ -15,6 +15,7 @@ type Client struct {
 type DriveClient interface {
 	ListFiles(ctx context.Context, folderID string) ([]*driveapi.File, error)
 	DownloadFile(ctx context.Context, fileID string) ([]byte, error)
+	DownloadGoogleWorkspaceFile(ctx context.Context, fileID string, exportMimeType string) ([]byte, error)
 }
 
 // NewClient は ADC（Application Default Credentials）で Drive API クライアントを作成する。
@@ -78,6 +79,20 @@ func (c *Client) ListFiles(ctx context.Context, folderID string) ([]*driveapi.Fi
 // Google Workspace ファイル（Docs/Sheets/Slides）は Export API が必要（#28 参照）。
 func (c *Client) DownloadFile(ctx context.Context, fileID string) ([]byte, error) {
 	res, err := c.svc.Files.Get(fileID).Context(ctx).Download()
+	if err != nil {
+		return nil, err
+	}
+	defer res.Body.Close()
+
+	data, err := io.ReadAll(res.Body)
+	if err != nil {
+		return nil, err
+	}
+	return data, nil
+}
+
+func (c *Client) DownloadGoogleWorkspaceFile(ctx context.Context, fileID string, exportMimeType string) ([]byte, error) {
+	res, err := c.svc.Files.Export(fileID, exportMimeType).Context(ctx).Download()
 	if err != nil {
 		return nil, err
 	}

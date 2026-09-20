@@ -120,3 +120,32 @@ func TestClientDownloadFile(t *testing.T) {
 		t.Errorf("contents: got %q, want %q", got, want)
 	}
 }
+
+func TestClientDownloadGoogleWorkspaceFile(t *testing.T) {
+	want := []byte("document contents\n")
+
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got, want := r.URL.Path, "/drive/v3/files/file-123/export"; got != want {
+			t.Errorf("path: got %q, want %q", got, want)
+		}
+
+		if got, want := r.URL.Query().Get("mimeType"), "text/plain"; got != want {
+			t.Errorf("mimeType: got %q, want %q", got, want)
+		}
+
+		_, _ = w.Write(want)
+	}))
+
+	got, err := client.DownloadGoogleWorkspaceFile(
+		context.Background(),
+		"file-123",
+		"text/plain",
+	)
+	if err != nil {
+		t.Fatalf("DownloadGoogleWorkspaceFile: %v", err)
+	}
+
+	if string(got) != string(want) {
+		t.Fatalf("contents: got %q, want %q", got, want)
+	}
+}

@@ -13,6 +13,12 @@ import (
 	"github.com/qei-2027-700/go-drive-etl/internal/repository"
 )
 
+var workspaceExportMimeTypes = map[string]string{
+	"application/vnd.google-apps.document":     "text/plain",
+	"application/vnd.google-apps.spreadsheet":  "text/csv",
+	"application/vnd.google-apps.presentation": "application/pdf",
+}
+
 type WorkerPool interface {
 	Run(
 		ctx context.Context,
@@ -48,7 +54,19 @@ func Run(
 					if !ok {
 						return
 					}
-					_, err := driveClient.DownloadFile(ctx, file.DriveFileID)
+
+					var err error
+					if exportMimeType, ok := workspaceExportMimeTypes[file.MimeType]; ok {
+						// Google Docs / Sheets / Slides
+						_, err = driveClient.DownloadGoogleWorkspaceFile(
+							ctx,
+							file.DriveFileID,
+							exportMimeType,
+						)
+					} else {
+						// PDF / CSV / JSONなど
+						_, err = driveClient.DownloadFile(ctx, file.DriveFileID)
+					}
 					if err != nil {
 						if ctx.Err() != nil {
 							return

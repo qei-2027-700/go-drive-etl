@@ -56,6 +56,21 @@ func (mr *MockDriveClientMockRecorder) DownloadFile(ctx, fileID any) *gomock.Cal
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DownloadFile", reflect.TypeOf((*MockDriveClient)(nil).DownloadFile), ctx, fileID)
 }
 
+// DownloadGoogleWorkspaceFile mocks base method.
+func (m *MockDriveClient) DownloadGoogleWorkspaceFile(ctx context.Context, fileID, exportMimeType string) ([]byte, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DownloadGoogleWorkspaceFile", ctx, fileID, exportMimeType)
+	ret0, _ := ret[0].([]byte)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// DownloadGoogleWorkspaceFile indicates an expected call of DownloadGoogleWorkspaceFile.
+func (mr *MockDriveClientMockRecorder) DownloadGoogleWorkspaceFile(ctx, fileID, exportMimeType any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DownloadGoogleWorkspaceFile", reflect.TypeOf((*MockDriveClient)(nil).DownloadGoogleWorkspaceFile), ctx, fileID, exportMimeType)
+}
+
 // ListFiles mocks base method.
 func (m *MockDriveClient) ListFiles(ctx context.Context, folderID string) ([]*drive.File, error) {
 	m.ctrl.T.Helper()
