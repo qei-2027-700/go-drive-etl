@@ -87,7 +87,7 @@ Firestore の「ドキュメント ID による上書き」に相当するのが
 | **Extract**          | Drive API から新着ファイルを検知（状態管理 DB の `checksum` で重複排除）                                              |
 | **Download**         | ファイルをストリームでローカルに取得                                                                                    |
 | **Parse & Validate** | Go の Parser（CSV/JSON）で分解し、Protocol Buffers から自動生成された Go 構造体（Struct）にマッピングしてスキーマ検証  |
-| **Load (Bronze)**    | スキーマ整合性の取れたデータを BigQuery Raw 層へ並行高速ロード（Streaming Insert / Bulk Load）                         |
+| **Load (Bronze)**    | スキーマ整合性の取れたデータを BigQuery Raw 層へ NDJSON Load Job でロード。並行性は Worker Pool のファイル単位で制御する。 |
 | **State Update**     | 状態管理 DB のステータスを `done` に更新                                                                                |
 | **Export (Gold)**    | BigQuery Mart 層のデータを吸い上げ、CSV 化して Google Drive（`/export-reports/`）へ自動書き戻し                        |
 

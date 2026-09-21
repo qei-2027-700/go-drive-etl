@@ -70,6 +70,62 @@ resource "google_bigquery_table" "chunks" {
       name = "embedding_status"
       type = "STRING"
       mode = "REQUIRED"
+    },
+    {
+      # NULLABLE allows this field to be added to an existing chunks table.
+      name = "content_version"
+      type = "STRING"
+      mode = "NULLABLE"
+    },
+    {
+      # NULLABLE allows this field to be added to an existing chunks table.
+      name = "ingested_at"
+      type = "TIMESTAMP"
+      mode = "NULLABLE"
+    }
+  ])
+}
+
+resource "google_bigquery_table" "chunks_staging" {
+  dataset_id          = google_bigquery_dataset.etl.dataset_id
+  table_id            = "chunks_staging"
+  deletion_protection = false
+
+  schema = jsonencode([
+    {
+      name = "load_id"
+      type = "STRING"
+      mode = "REQUIRED"
+    },
+    {
+      name = "file_id"
+      type = "STRING"
+      mode = "REQUIRED"
+    },
+    {
+      name = "chunk_index"
+      type = "INTEGER"
+      mode = "REQUIRED"
+    },
+    {
+      name = "content"
+      type = "STRING"
+      mode = "REQUIRED"
+    },
+    {
+      name = "embedding_status"
+      type = "STRING"
+      mode = "REQUIRED"
+    },
+    {
+      name = "content_version"
+      type = "STRING"
+      mode = "REQUIRED"
+    },
+    {
+      name = "ingested_at"
+      type = "TIMESTAMP"
+      mode = "REQUIRED"
     }
   ])
 }

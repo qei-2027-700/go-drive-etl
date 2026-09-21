@@ -2,6 +2,7 @@ package etl
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"testing"
@@ -102,8 +103,15 @@ func TestRun_MarkdownFileStoresChunks(t *testing.T) {
 	repo.EXPECT().ListPending(gomock.Any()).Return([]*domain.File{file}, nil)
 	driveClient.EXPECT().DownloadFile(gomock.Any(), file.DriveFileID).
 		Return([]byte("# Overview\nSummary.\n\n## Steps\nDo this."), nil)
-	bqClient.EXPECT().InsertRows(gomock.Any(), "chunks", gomock.Any()).
-		DoAndReturn(func(_ context.Context, _ string, rows []map[string]bigquery.Value) error {
+	bqClient.EXPECT().ReplaceChunkRows(gomock.Any(), file.DriveFileID, gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, fileID, contentVersion string, rows []map[string]bigquery.Value) error {
+			if fileID != file.DriveFileID {
+				t.Fatalf("file ID = %q, want %q", fileID, file.DriveFileID)
+			}
+			wantVersion := fmt.Sprintf("%x", sha256.Sum256([]byte("# Overview\nSummary.\n\n## Steps\nDo this.")))
+			if contentVersion != wantVersion {
+				t.Fatalf("content version = %q, want %q", contentVersion, wantVersion)
+			}
 			if len(rows) != 2 {
 				t.Fatalf("chunk row count = %d, want 2", len(rows))
 			}
@@ -134,8 +142,28 @@ func TestRun_MarkdownChunkInsertFailureMarksFileFailed(t *testing.T) {
 
 	repo.EXPECT().ListPending(gomock.Any()).Return([]*domain.File{file}, nil)
 	driveClient.EXPECT().DownloadFile(gomock.Any(), file.DriveFileID).Return([]byte("# Overview\nSummary."), nil)
-	bqClient.EXPECT().InsertRows(gomock.Any(), "chunks", gomock.Any()).Return(errors.New("BigQuery error"))
+	bqClient.EXPECT().ReplaceChunkRows(gomock.Any(), file.DriveFileID, gomock.Any(), gomock.Any()).Return(errors.New("BigQuery error"))
 	repo.EXPECT().UpdateStatus(gomock.Any(), file.DriveFileID, domain.SyncStatusFailed).Return(nil)
+
+	if err := Run(context.Background(), repo, driveClient, bqClient); err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+}
+
+func TestRun_EmptyMarkdownReplacesExistingChunks(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	repo := repoMock.NewMockFileRepo(ctrl)
+	driveClient := driveMock.NewMockDriveClient(ctrl)
+	bqClient := bqMock.NewMockBQClient(ctrl)
+	file := &domain.File{DriveFileID: "markdown-file-id", MimeType: "text/markdown"}
+
+	repo.EXPECT().ListPending(gomock.Any()).Return([]*domain.File{file}, nil)
+	driveClient.EXPECT().DownloadFile(gomock.Any(), file.DriveFileID).Return([]byte(" \n\n"), nil)
+	bqClient.EXPECT().ReplaceChunkRows(gomock.Any(), file.DriveFileID, gomock.Any(), []map[string]bigquery.Value{}).Return(nil)
+	bqClient.EXPECT().InsertRows(gomock.Any(), "drive_files", gomock.Any()).Return(nil)
+	repo.EXPECT().UpdateStatus(gomock.Any(), file.DriveFileID, domain.SyncStatusDone).Return(nil)
 
 	if err := Run(context.Background(), repo, driveClient, bqClient); err != nil {
 		t.Fatalf("Run() error = %v", err)

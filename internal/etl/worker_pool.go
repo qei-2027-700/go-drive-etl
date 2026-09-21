@@ -3,6 +3,8 @@ package etl
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"fmt"
 	"log"
 	"sync"
 	"time"
@@ -105,18 +107,17 @@ func Run(
 							})
 						}
 
-						if len(chunkRows) > 0 {
-							if err := bqClient.InsertRows(ctx, "chunks", chunkRows); err != nil {
-								if ctx.Err() != nil {
-									return
-								}
-								log.Printf("BigQuery chunks InsertRows failed: fileID=%s err=%v", file.DriveFileID, err)
-								if statusErr := repo.UpdateStatus(ctx, file.DriveFileID,
-									domain.SyncStatusFailed); statusErr != nil {
-									log.Printf("UpdateStatus failed: fileID=%s err=%v", file.DriveFileID, statusErr)
-								}
-								continue
+						contentVersion := fmt.Sprintf("%x", sha256.Sum256(content))
+						if err := bqClient.ReplaceChunkRows(ctx, file.DriveFileID, contentVersion, chunkRows); err != nil {
+							if ctx.Err() != nil {
+								return
 							}
+							log.Printf("BigQuery chunks InsertRows failed: fileID=%s err=%v", file.DriveFileID, err)
+							if statusErr := repo.UpdateStatus(ctx, file.DriveFileID,
+								domain.SyncStatusFailed); statusErr != nil {
+								log.Printf("UpdateStatus failed: fileID=%s err=%v", file.DriveFileID, statusErr)
+							}
+							continue
 						}
 					}
 

@@ -34,7 +34,7 @@ flowchart LR
         EX["Extract<br/>ListFiles + メタデータ"]
         DL["Download<br/>ストリーム取得"]
         PV["Parse & Validate<br/>Protocol Buffers 型検証"]
-        LD["Load<br/>Streaming Insert"]
+        LD["Load<br/>NDJSON Load Job"]
         WP["Worker Pool<br/>goroutine × 5"]
     end
 
