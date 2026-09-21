@@ -1,6 +1,7 @@
 package etl
 
 import (
+	"bytes"
 	"context"
 	"log"
 	"sync"
@@ -10,6 +11,7 @@ import (
 	"github.com/qei-2027-700/go-drive-etl/internal/bq"
 	"github.com/qei-2027-700/go-drive-etl/internal/domain"
 	"github.com/qei-2027-700/go-drive-etl/internal/drive"
+	"github.com/qei-2027-700/go-drive-etl/internal/parser"
 	"github.com/qei-2027-700/go-drive-etl/internal/repository"
 )
 
@@ -34,6 +36,8 @@ func Run(
 	driveClient drive.DriveClient,
 	bqClient bq.BQClient,
 ) error {
+	markdownParser := parser.MarkdownParser{}
+
 	files, err := repo.ListPending(ctx)
 	if err != nil {
 		return err
@@ -55,17 +59,18 @@ func Run(
 						return
 					}
 
+					var content []byte
 					var err error
 					if exportMimeType, ok := workspaceExportMimeTypes[file.MimeType]; ok {
 						// Google Docs / Sheets / Slides
-						_, err = driveClient.DownloadGoogleWorkspaceFile(
+						content, err = driveClient.DownloadGoogleWorkspaceFile(
 							ctx,
 							file.DriveFileID,
 							exportMimeType,
 						)
 					} else {
 						// PDF / CSV / JSONなど
-						_, err = driveClient.DownloadFile(ctx, file.DriveFileID)
+						content, err = driveClient.DownloadFile(ctx, file.DriveFileID)
 					}
 					if err != nil {
 						if ctx.Err() != nil {
@@ -78,6 +83,41 @@ func Run(
 							log.Printf("UpdateStatus failed: fileID=%s err=%v", file.DriveFileID, statusErr)
 						}
 						continue
+					}
+
+					if file.MimeType == "text/markdown" {
+						chunks, err := markdownParser.Parse(bytes.NewReader(content))
+						if err != nil {
+							log.Printf("Markdown parse failed: fileID=%s err=%v", file.DriveFileID, err)
+							if statusErr := repo.UpdateStatus(ctx, file.DriveFileID, domain.SyncStatusFailed); statusErr != nil {
+								log.Printf("UpdateStatus failed: fileID=%s err=%v", file.DriveFileID, statusErr)
+							}
+							continue
+						}
+
+						chunkRows := make([]map[string]bigquery.Value, 0, len(chunks))
+						for index, chunk := range chunks {
+							chunkRows = append(chunkRows, map[string]bigquery.Value{
+								"file_id":          file.DriveFileID,
+								"chunk_index":      index,
+								"content":          chunk,
+								"embedding_status": "pending",
+							})
+						}
+
+						if len(chunkRows) > 0 {
+							if err := bqClient.InsertRows(ctx, "chunks", chunkRows); err != nil {
+								if ctx.Err() != nil {
+									return
+								}
+								log.Printf("BigQuery chunks InsertRows failed: fileID=%s err=%v", file.DriveFileID, err)
+								if statusErr := repo.UpdateStatus(ctx, file.DriveFileID,
+									domain.SyncStatusFailed); statusErr != nil {
+									log.Printf("UpdateStatus failed: fileID=%s err=%v", file.DriveFileID, statusErr)
+								}
+								continue
+							}
+						}
 					}
 
 					rows := []map[string]bigquery.Value{
