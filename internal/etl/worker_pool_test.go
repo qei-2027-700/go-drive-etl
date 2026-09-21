@@ -86,6 +86,62 @@ func TestRun_DownloadAndLoadFile(t *testing.T) {
 	}
 }
 
+func TestRun_MarkdownFileStoresChunks(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	repo := repoMock.NewMockFileRepo(ctrl)
+	driveClient := driveMock.NewMockDriveClient(ctrl)
+	bqClient := bqMock.NewMockBQClient(ctrl)
+	file := &domain.File{
+		DriveFileID: "markdown-file-id",
+		Path:        "guide.md",
+		MimeType:    "text/markdown",
+	}
+
+	repo.EXPECT().ListPending(gomock.Any()).Return([]*domain.File{file}, nil)
+	driveClient.EXPECT().DownloadFile(gomock.Any(), file.DriveFileID).
+		Return([]byte("# Overview\nSummary.\n\n## Steps\nDo this."), nil)
+	bqClient.EXPECT().InsertRows(gomock.Any(), "chunks", gomock.Any()).
+		DoAndReturn(func(_ context.Context, _ string, rows []map[string]bigquery.Value) error {
+			if len(rows) != 2 {
+				t.Fatalf("chunk row count = %d, want 2", len(rows))
+			}
+			if rows[0]["file_id"] != file.DriveFileID || rows[0]["chunk_index"] != 0 || rows[0]["content"] != "# Overview\nSummary." {
+				t.Errorf("unexpected first chunk row: %#v", rows[0])
+			}
+			if rows[1]["chunk_index"] != 1 || rows[1]["content"] != "## Steps\nDo this." {
+				t.Errorf("unexpected second chunk row: %#v", rows[1])
+			}
+			return nil
+		})
+	bqClient.EXPECT().InsertRows(gomock.Any(), "drive_files", gomock.Any()).Return(nil)
+	repo.EXPECT().UpdateStatus(gomock.Any(), file.DriveFileID, domain.SyncStatusDone).Return(nil)
+
+	if err := Run(context.Background(), repo, driveClient, bqClient); err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+}
+
+func TestRun_MarkdownChunkInsertFailureMarksFileFailed(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	repo := repoMock.NewMockFileRepo(ctrl)
+	driveClient := driveMock.NewMockDriveClient(ctrl)
+	bqClient := bqMock.NewMockBQClient(ctrl)
+	file := &domain.File{DriveFileID: "markdown-file-id", MimeType: "text/markdown"}
+
+	repo.EXPECT().ListPending(gomock.Any()).Return([]*domain.File{file}, nil)
+	driveClient.EXPECT().DownloadFile(gomock.Any(), file.DriveFileID).Return([]byte("# Overview\nSummary."), nil)
+	bqClient.EXPECT().InsertRows(gomock.Any(), "chunks", gomock.Any()).Return(errors.New("BigQuery error"))
+	repo.EXPECT().UpdateStatus(gomock.Any(), file.DriveFileID, domain.SyncStatusFailed).Return(nil)
+
+	if err := Run(context.Background(), repo, driveClient, bqClient); err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+}
+
 // Google Docsの場合は、DownloadFileではなく、text/plain で
 // DownloadGoogleWorkspaceFile を呼ぶこと
 func TestRun_ExportGoogleDocument(t *testing.T) {

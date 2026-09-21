@@ -44,3 +44,32 @@ resource "google_bigquery_table" "drive_files" {
     }
   ])
 }
+
+resource "google_bigquery_table" "chunks" {
+  dataset_id          = google_bigquery_dataset.etl.dataset_id
+  table_id            = "chunks"
+  deletion_protection = false
+
+  schema = jsonencode([
+    {
+      name = "file_id"
+      type = "STRING"
+      mode = "REQUIRED"
+    },
+    {
+      name = "chunk_index"
+      type = "INTEGER"
+      mode = "REQUIRED"
+    },
+    {
+      name = "content"
+      type = "STRING"
+      mode = "REQUIRED"
+    },
+    {
+      name = "embedding_status"
+      type = "STRING"
+      mode = "REQUIRED"
+    }
+  ])
+}
