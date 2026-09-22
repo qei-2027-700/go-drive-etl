@@ -1,0 +1,144 @@
+name: Post Jev review signal
+
+on:
+  pull_request:
+    types: [opened]
+
+permissions:
+  issues: write
+  pull-requests: read
+
+jobs:
+  post-review-signal:
+    name: Post Jev review signal
+    # Fork PRs do not receive repository secrets and are outside this workflow's scope.
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    env:
+      JEV_API_KEY: ${{ secrets.JEV_API_KEY }}
+
+    steps:
+      - name: Evaluate PR diff and post review signal
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
+        with:
+          script: |
+            const marker = '<!-- jev-review-signal -->';
+            const pullNumber = context.payload.pull_request.number;
+            const maxDiffCharacters = 100000;
+
+            if (!process.env.JEV_API_KEY) {
+              core.setFailed('JEV_API_KEY is not configured. Add it as a GitHub Actions secret.');
+              return;
+            }
+
+            const { data: diff } = await github.request(
+              'GET /repos/{owner}/{repo}/pulls/{pull_number}',
+              {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: pullNumber,
+                headers: {
+                  accept: 'application/vnd.github.v3.diff',
+                },
+              },
+            );
+
+            if (typeof diff !== 'string') {
+              core.setFailed('Could not retrieve the PR diff in text format.');
+              return;
+            }
+            if (diff.length > maxDiffCharacters) {
+              core.setFailed(
+                `PR diff is too large for Jev evaluation (${diff.length} characters; limit: ${maxDiffCharacters}).`,
+              );
+              return;
+            }
+
+            const jevResponse = await fetch('https://api.typesafe.ai/v1/systemone', {
+              method: 'POST',
+              headers: {
+                Authorization: `Bearer ${process.env.JEV_API_KEY}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                model: 'jev-latest',
+                state: diff,
+                questions: {
+                  review_priority: {
+                    type: 'choice',
+                    instructions:
+                      'Classify whether this pull request should receive priority human code review.',
+                    criteria: {
+                      review_required:
+                        'The change may affect correctness, security, data integrity, external behavior, or another consequential contract.',
+                      no_material_concern:
+                        'The change appears mechanical or low-risk and has no apparent consequential behavior change.',
+                    },
+                  },
+                },
+              }),
+            });
+
+            if (!jevResponse.ok) {
+              core.setFailed(`Jev API request failed with status ${jevResponse.status}.`);
+              return;
+            }
+
+            const jevResult = await jevResponse.json();
+            const answer = jevResult.answers?.review_priority;
+            if (
+              !answer ||
+              !['review_required', 'no_material_concern'].includes(answer.choice) ||
+              !Number.isFinite(answer.confidence)
+            ) {
+              core.setFailed('Jev API returned an invalid review_priority response.');
+              return;
+            }
+
+            const recommendation =
+              answer.choice === 'review_required'
+                ? 'Priority human review recommended'
+                : 'No material concern detected';
+            const confidence = `${Math.round(answer.confidence * 100)}%`;
+            const commentBody = `${marker}
+            ## Jev review signal
+
+            - **Recommendation:** ${recommendation}
+            - **Confidence:** ${confidence}
+
+            This is a structured Jev signal based on the PR diff, not a generated code review.`;
+
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: pullNumber,
+              per_page: 100,
+            });
+            const existingComment = comments.find(
+              (comment) =>
+                comment.user?.login === 'github-actions[bot]' && comment.body?.includes(marker),
+            );
+
+            let comment;
+            if (existingComment) {
+              ({ data: comment } = await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existingComment.id,
+                body: commentBody,
+              }));
+            } else {
+              ({ data: comment } = await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: pullNumber,
+                body: commentBody,
+              }));
+            }
+
+            await core.summary
+              .addHeading('Jev review signal')
+              .addRaw(`Posted a ${answer.choice} signal for PR #${pullNumber}.`)
+              .addBreak()
+              .addLink('View comment', comment.html_url)
+              .write();
