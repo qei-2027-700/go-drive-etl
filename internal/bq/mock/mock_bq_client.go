@@ -54,3 +54,17 @@ func (mr *MockBQClientMockRecorder) InsertRows(ctx, table, rows any) *gomock.Cal
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InsertRows", reflect.TypeOf((*MockBQClient)(nil).InsertRows), ctx, table, rows)
 }
+
+// ReplaceChunkRows mocks base method.
+func (m *MockBQClient) ReplaceChunkRows(ctx context.Context, fileID, contentVersion string, rows []map[string]bigquery.Value) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ReplaceChunkRows", ctx, fileID, contentVersion, rows)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// ReplaceChunkRows indicates an expected call of ReplaceChunkRows.
+func (mr *MockBQClientMockRecorder) ReplaceChunkRows(ctx, fileID, contentVersion, rows any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReplaceChunkRows", reflect.TypeOf((*MockBQClient)(nil).ReplaceChunkRows), ctx, fileID, contentVersion, rows)
+}

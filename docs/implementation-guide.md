@@ -197,5 +197,5 @@ func (c *Client) Close() error {
 - [ ] Step 3: Docker Compose で Postgres の起動
 - [ ] Step 4: Repository・Drive Client の繋ぎ込み
 - [ ] Step 5: Worker Pool による複数ファイルダウンロードの並行処理の確認
-- [ ] Step 6: パースデータを `pb.FileRecord` にのせ、BigQuery へ流し込むストリーミングインサートの実装
+- [ ] Step 6: パースデータを `pb.FileRecord` にのせ、BigQuery へ流し込む NDJSON Load Job の実装
 - [ ] Step 7: OS シグナルを送信した際の Graceful Shutdown テスト
