@@ -2,7 +2,7 @@ name: Post Jev review signal
 
 on:
   pull_request:
-    types: [opened]
+    types: [opened, reopened]
 
 permissions:
   issues: write
