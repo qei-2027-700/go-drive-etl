@@ -1,0 +1,154 @@
+module.exports = async ({ github, context, core }) => {
+const marker = '<!-- jev-review-signal -->';
+  const pullRequest = context.payload.pull_request;
+  const pullNumber = pullRequest.number;
+  const headSha = pullRequest.head.sha;
+  const startedAt = Date.now();
+  const threshold = Number(process.env.JEV_APPROVAL_CONFIDENCE_THRESHOLD);
+  const maxDiffCharacters = Number(process.env.JEV_MAX_DIFF_CHARACTERS);
+  const categories = {
+    security: 'Assess whether the diff introduces a security-sensitive change that needs priority human review.',
+    data_integrity: 'Assess whether the diff can affect stored data correctness, loss, corruption, migration safety, or idempotency and needs priority human review.',
+    external_contract: 'Assess whether the diff can change an externally observable API, file format, integration, or other compatibility contract and needs priority human review.',
+    reliability: 'Assess whether the diff can reduce runtime reliability, error handling, retries, concurrency safety, or operational resilience and needs priority human review.',
+    test_gap: 'Assess whether the diff lacks tests needed to safely validate consequential behavior and needs priority human review.',
+  };
+  const excludedPath = (filename) =>
+    filename.startsWith('vendor/') || filename.startsWith('node_modules/') ||
+    filename.startsWith('dist/') || filename.startsWith('coverage/') ||
+    /(^|\/)(package-lock\.json|npm-shrinkwrap\.json|yarn\.lock|pnpm-lock\.yaml|go\.sum)$/.test(filename) ||
+    /\.lock$/.test(filename) || /\.(min\.js|map)$/.test(filename);
+  const label = (category) => ({
+    security: 'Security', data_integrity: 'Data integrity', external_contract: 'External contract',
+    reliability: 'Reliability', test_gap: 'Test gap',
+  }[category]);
+  const priorityText = (choice) => choice === 'review_required' ? '⚠️ Priority review required' : 'No material concern';
+  const safeError = (error) => error instanceof Error
+    ? error.message.replace(/Bearer\s+\S+|[A-Za-z0-9_-]{24,}/g, '[redacted]') : String(error);
+
+  let includedFiles = 0;
+  let excludedFiles = 0;
+  let skippedPatchFiles = 0;
+  let inputCharacters = 0;
+  let answers;
+  let commentUrl;
+  let outcome = 'failed';
+  let failureReason;
+
+  try {
+    if (!Number.isFinite(threshold) || threshold < 0 || threshold > 1) throw new Error('JEV_APPROVAL_CONFIDENCE_THRESHOLD must be a number from 0 to 1.');
+    if (!Number.isSafeInteger(maxDiffCharacters) || maxDiffCharacters <= 0) throw new Error('JEV_MAX_DIFF_CHARACTERS must be a positive integer.');
+    if (!process.env.JEV_API_KEY) throw new Error('JEV_API_KEY is not configured. Add it as a GitHub Actions secret.');
+
+    const files = await github.paginate(github.rest.pulls.listFiles, {
+      owner: context.repo.owner, repo: context.repo.repo, pull_number: pullNumber, per_page: 100,
+    });
+    const diffParts = [];
+    for (const file of files) {
+      if (excludedPath(file.filename)) {
+        excludedFiles += 1;
+      } else if (typeof file.patch !== 'string') {
+        // GitHub omits patches for binary and exceptionally large files; do not send them.
+        skippedPatchFiles += 1;
+      } else {
+        includedFiles += 1;
+        diffParts.push(`diff --git a/${file.previous_filename || file.filename} b/${file.filename}\n${file.patch}`);
+      }
+    }
+    const diff = diffParts.join('\n');
+    inputCharacters = diff.length;
+    if (!diff) throw new Error('No evaluable PR diff remains after excluding low-value files and files without text patches.');
+    if (inputCharacters > maxDiffCharacters) throw new Error(`Filtered PR diff is too large for Jev evaluation (${inputCharacters} characters; limit: ${maxDiffCharacters}).`);
+
+    const questions = Object.fromEntries(Object.entries(categories).map(([category, instructions]) => [category, {
+      type: 'choice', instructions,
+      criteria: {
+        review_required: 'A human should prioritize reviewing this category because the diff presents a material risk or uncertainty.',
+        no_material_concern: 'The diff does not show a material concern in this category that warrants priority human review.',
+      },
+    }]));
+    const response = await fetch('https://api.typesafe.ai/v1/systemone', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${process.env.JEV_API_KEY}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model: 'jev-latest', state: diff, questions }),
+    });
+    if (!response.ok) throw new Error(`Jev API request failed with status ${response.status}.`);
+    const result = await response.json();
+    answers = result.answers;
+    for (const category of Object.keys(categories)) {
+      const answer = answers?.[category];
+      if (!answer || !['review_required', 'no_material_concern'].includes(answer.choice) ||
+          !Number.isFinite(answer.confidence) || answer.confidence < 0 || answer.confidence > 1) {
+        throw new Error(`Jev API returned an invalid ${category} response.`);
+      }
+    }
+
+    const orderedCategories = Object.keys(categories).sort((a, b) =>
+      Number(answers[b].choice === 'review_required') - Number(answers[a].choice === 'review_required') ||
+      answers[b].confidence - answers[a].confidence);
+    const rows = orderedCategories.map((category) =>
+      `| ${label(category)} | ${priorityText(answers[category].choice)} | ${Math.round(answers[category].confidence * 100)}% |`);
+    const reviewCategories = orderedCategories.filter((category) => answers[category].choice === 'review_required');
+    const allEligible = reviewCategories.length === 0 && orderedCategories.every((category) => answers[category].confidence >= threshold);
+    const status = allEligible
+      ? `✅ No material concern in all categories at or above the ${Math.round(threshold * 100)}% approval threshold. The bot automatically approves this head SHA (once).`
+      : `👤 Human review remains required. ${reviewCategories.length ? `Priority categories: ${reviewCategories.map(label).join(', ')}.` : `At least one confidence value is below the ${Math.round(threshold * 100)}% approval threshold.`}`;
+    const commentBody = [
+      marker,
+      '## Jev review triage',
+      '',
+      status,
+      '',
+      '| Category | Triage | Confidence |',
+      '| --- | --- | --- |',
+      rows.join('\n'),
+      '',
+      `Evaluated ${includedFiles} text file(s); excluded ${excludedFiles} low-value file(s) and skipped ${skippedPatchFiles} file(s) without text patches. This is a structured Jev signal based only on the filtered PR diff. It is not a determination that merging is safe or that bugs are absent.`,
+    ].join('\n');
+    const comments = await github.paginate(github.rest.issues.listComments, {
+      owner: context.repo.owner, repo: context.repo.repo, issue_number: pullNumber, per_page: 100,
+    });
+    const existingComment = comments.find((comment) => comment.user?.login === 'github-actions[bot]' && comment.body?.includes(marker));
+    let comment;
+    if (existingComment) {
+      ({ data: comment } = await github.rest.issues.updateComment({ owner: context.repo.owner, repo: context.repo.repo, comment_id: existingComment.id, body: commentBody }));
+    } else {
+      ({ data: comment } = await github.rest.issues.createComment({ owner: context.repo.owner, repo: context.repo.repo, issue_number: pullNumber, body: commentBody }));
+    }
+    commentUrl = comment.html_url;
+
+    if (allEligible) {
+      const reviews = await github.paginate(github.rest.pulls.listReviews, {
+        owner: context.repo.owner, repo: context.repo.repo, pull_number: pullNumber, per_page: 100,
+      });
+      const alreadyApproved = reviews.some((review) =>
+        review.user?.login === 'github-actions[bot]' && review.state === 'APPROVED' && review.commit_id === headSha);
+      if (!alreadyApproved) {
+        await github.rest.pulls.createReview({
+          owner: context.repo.owner, repo: context.repo.repo, pull_number: pullNumber, commit_id: headSha,
+          event: 'APPROVE', body: 'Jev triage: all configured categories returned no material concern above the approval confidence threshold.',
+        });
+      }
+    }
+    outcome = allEligible ? 'approved' : 'review required';
+  } catch (error) {
+    failureReason = safeError(error);
+    core.setFailed(`Jev review triage failed: ${failureReason}`);
+  } finally {
+    const elapsedSeconds = ((Date.now() - startedAt) / 1000).toFixed(1);
+    await core.summary
+      .addHeading('Jev review triage')
+      .addTable([
+        [{ data: 'Metric', header: true }, { data: 'Value', header: true }],
+        ['Outcome', outcome], ['Input characters sent', String(inputCharacters)],
+        ['Included text files', String(includedFiles)], ['Excluded low-value files', String(excludedFiles)],
+        ['Files without text patches', String(skippedPatchFiles)], ['Duration', `${elapsedSeconds}s`],
+        ['Approval threshold', `${Math.round(threshold * 100)}%`],
+      ])
+      .addRaw(answers ? `\nCategory results: ${Object.entries(answers).map(([category, answer]) => `${category}=${answer.choice} (${Math.round(answer.confidence * 100)}%)`).join(', ')}.` : '')
+      .addRaw(failureReason ? `\nFailure: ${failureReason}` : '')
+      .addLink(commentUrl ? 'View triage comment' : 'View pull request', commentUrl || pullRequest.html_url)
+      .write();
+  }
+
+};
