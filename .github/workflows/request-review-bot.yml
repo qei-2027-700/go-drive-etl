@@ -2,7 +2,7 @@ name: Triage PR review with Jev
 
 on:
   pull_request:
-    types: [opened, reopened, synchronize]
+    types: [opened, reopened, synchronize, ready_for_review]
 
 concurrency:
   group: jev-review-${{ github.workflow }}-${{ github.event.pull_request.number }}
