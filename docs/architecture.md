@@ -123,6 +123,9 @@ OS シグナル（`Ctrl+C` / `SIGTERM`）を検知すると、`context` がキ�
 | :--- | :--- |
 | BigQuery dataset | `etl_raw`（Bronze 層）。課金未設定のためテーブル・パーティションに 60 日の有効期限を設定 |
 | BigQuery table | `etl_raw.drive_files`（スキーマ定義） |
+| BigQuery dataset / View | `etl_silver.silver_chunks`。`etl_raw.chunks_current` を入力に、分析で共通利用する派生列を提供 |
+| BigQuery dataset / Mart | `etl_gold.mart_ingestion_daily` / `mart_file_latest`。Looker Studio と CSV 出力が参照する物理テーブル |
+| BigQuery Scheduled Query | BigQuery Data Transfer API を Terraform で有効化し、Silver から Gold Mart を日次で `WRITE_TRUNCATE` 再計算 |
 | （将来）IAM | BI ツール / Worker 用サービスアカウント + 最小権限ロール付与 |
 | （将来）GCS bucket | 生ファイルの保管用 Bronze 層 |
 
@@ -132,7 +135,8 @@ OS シグナル（`Ctrl+C` / `SIGTERM`）を検知すると、`context` がキ�
 iac/
 ├── main.tf                    # provider / terraform ブロック
 ├── bigquery.tf                # dataset・table 定義
-├── variables.tf               # project_id / dataset_id / location
+├── silver_gold.tf             # Silver View・Gold Mart 更新ジョブ
+├── variables.tf               # project_id / dataset_id / location など
 ├── terraform.tfvars           # 実値（Git 管理外）
 └── terraform.tfvars.example   # 雛形
 ```
@@ -142,6 +146,26 @@ iac/
 - ステートはローカルの `terraform.tfstate`。複数環境を扱う段階で GCS バックエンドへ移す
 - 環境は `dev` のみで開始し、将来 `prod` を追加
 - ADC（Application Default Credentials）で認証（ローカル: `gcloud auth application-default login`）
+
+### Silver / Gold のデータ契約
+
+```mermaid
+flowchart LR
+  chunks["etl_raw.chunks\nappend-only"] --> current["etl_raw.chunks_current\n最新version・重複除去"]
+  current --> silver["etl_silver.silver_chunks\nView"]
+  silver -->|"日次 Scheduled Query"| daily["etl_gold.mart_ingestion_daily"]
+  silver -->|"日次 Scheduled Query"| latest["etl_gold.mart_file_latest"]
+  daily --> looker["Looker Studio"]
+  daily --> export["CSV export"]
+  latest --> looker
+  latest --> export
+```
+
+- Bronze は append-only の `chunks` と、最新コンテンツ版を公開する `chunks_current` で構成する。
+- Silver は `chunks_current` だけを入力とする View であり、`ingested_date`（Asia/Tokyo）、`content_length`、`is_embedded` を一貫して提供する。RAG は `chunks_current`、BI とレポートは Gold Mart を参照する。
+- Gold は `mart_ingestion_daily`（日別のユニークファイル数・チャンク数・文字数・embedding 状態）と `mart_file_latest`（ファイルごとの最新サマリ）を物理テーブルとして提供する。どちらも BigQuery Scheduled Query が日次で全件再計算する。
+- Bronze の 60 日 TTL は `etl_raw` のみに適用する。Silver / Gold の保持期間は用途に応じて明示的に管理し、Bronze の既定 TTL を継承しない。
+- 現 Worker は `drive_files` を BigQuery にロードしていないため、初期 Mart は `chunks_current` から得られる指標に限定する。ファイル名・MIME type 別の分析が必要になった時点で `drive_files` のロードを追加する。
 
 ---
 

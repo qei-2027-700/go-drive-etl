@@ -14,3 +14,21 @@ variable "location" {
   type        = string
   default     = "asia-northeast1"
 }
+
+variable "silver_dataset_id" {
+  description = "Silver 層の BigQuery dataset ID"
+  type        = string
+  default     = "etl_silver"
+}
+
+variable "gold_dataset_id" {
+  description = "Gold 層の BigQuery dataset ID"
+  type        = string
+  default     = "etl_gold"
+}
+
+variable "mart_refresh_schedule" {
+  description = "Gold Mart を更新する BigQuery Scheduled Query の UTC スケジュール"
+  type        = string
+  default     = "every day 02:00"
+}

@@ -1,3 +1,6 @@
 project_id = "your-gcp-project-id"
 dataset_id = "etl_raw"
 location   = "asia-northeast1"
+silver_dataset_id     = "etl_silver"
+gold_dataset_id       = "etl_gold"
+mart_refresh_schedule = "every day 02:00"
