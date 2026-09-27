@@ -47,7 +47,30 @@ func run() error {
 	}
 	defer bq.Close()
 
-	files, err := driveClient.ListFiles(ctx, os.Getenv("DRIVE_FOLDER_ID"))
+	if err := runPipeline(ctx, repo, driveClient, bq, os.Getenv("DRIVE_FOLDER_ID")); err != nil {
+		if errors.Is(err, context.Canceled) {
+			log.Println("停止シグナルを受信しました。安全にシャットダウンします。")
+			return nil
+		}
+		return fmt.Errorf("ETL パイプラインの実行に失敗: %w", err)
+	}
+
+	log.Println("ETL パイプラインが完了しました。")
+	return nil
+}
+
+// runPipeline discovers files, registers them in the state store, then runs
+// the worker pool. Keeping the orchestration separate from client construction
+// makes the production entry point integration-testable with real state storage
+// and mocked external APIs.
+func runPipeline(
+	ctx context.Context,
+	repo repository.FileRepo,
+	driveClient drive.DriveClient,
+	bq bqclient.BQClient,
+	folderID string,
+) error {
+	files, err := driveClient.ListFiles(ctx, folderID)
 	if err != nil {
 		return fmt.Errorf("Drive ファイル一覧の取得に失敗: %w", err)
 	}
@@ -67,13 +90,7 @@ func run() error {
 
 	log.Printf("Drive ファイルを %d 件検出しました。Worker Pool を開始します。", len(files))
 	if err := etl.Run(ctx, repo, driveClient, bq); err != nil {
-		if errors.Is(err, context.Canceled) {
-			log.Println("停止シグナルを受信しました。安全にシャットダウンします。")
-			return nil
-		}
 		return fmt.Errorf("Worker Pool の実行に失敗: %w", err)
 	}
-
-	log.Println("ETL パイプラインが完了しました。")
 	return nil
 }
