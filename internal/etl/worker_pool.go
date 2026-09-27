@@ -97,18 +97,32 @@ func Run(
 							continue
 						}
 
-						chunkRows := make([]map[string]bigquery.Value, 0, len(chunks))
+						contentVersion := fmt.Sprintf("%x", sha256.Sum256(content))
+						ingestedAt := time.Now().UTC()
+						chunkRows := make([]map[string]bigquery.Value, 0, max(1, len(chunks)))
 						for index, chunk := range chunks {
 							chunkRows = append(chunkRows, map[string]bigquery.Value{
 								"file_id":          file.DriveFileID,
 								"chunk_index":      index,
 								"content":          chunk,
 								"embedding_status": "pending",
+								"content_version":  contentVersion,
+								"ingested_at":      ingestedAt,
+								"is_deleted":       false,
 							})
 						}
-
-						contentVersion := fmt.Sprintf("%x", sha256.Sum256(content))
-						if err := bqClient.ReplaceChunkRows(ctx, file.DriveFileID, contentVersion, chunkRows); err != nil {
+						if len(chunkRows) == 0 {
+							chunkRows = append(chunkRows, map[string]bigquery.Value{
+								"file_id":          file.DriveFileID,
+								"chunk_index":      0,
+								"content":          "",
+								"embedding_status": "pending",
+								"content_version":  contentVersion,
+								"ingested_at":      ingestedAt,
+								"is_deleted":       true,
+							})
+						}
+						if err := bqClient.InsertRows(ctx, "chunks", chunkRows); err != nil {
 							if ctx.Err() != nil {
 								return
 							}
