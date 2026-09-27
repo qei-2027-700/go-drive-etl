@@ -6,10 +6,12 @@ import (
 	"errors"
 	"fmt"
 	"testing"
+	"time"
 
 	"cloud.google.com/go/bigquery"
 	"github.com/qei-2027-700/go-drive-etl/internal/domain"
 	"go.uber.org/mock/gomock"
+	"google.golang.org/api/googleapi"
 
 	bqMock "github.com/qei-2027-700/go-drive-etl/internal/bq/mock"
 	driveMock "github.com/qei-2027-700/go-drive-etl/internal/drive/mock"
@@ -144,6 +146,139 @@ func TestRun_MarkdownChunkInsertFailureMarksFileFailed(t *testing.T) {
 
 	if err := Run(context.Background(), repo, driveClient, bqClient); err != nil {
 		t.Fatalf("Run() error = %v", err)
+	}
+}
+
+func TestRun_MarkdownChunkLoadRetriesTransientError(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	repo := repoMock.NewMockFileRepo(ctrl)
+	driveClient := driveMock.NewMockDriveClient(ctrl)
+	bqClient := bqMock.NewMockBQClient(ctrl)
+	file := &domain.File{DriveFileID: "markdown-file-id", MimeType: "text/markdown"}
+
+	originalWait := waitForBigQueryRetry
+	waitForBigQueryRetry = func(_ context.Context, delay time.Duration) error {
+		if delay != bigQueryLoadInitialDelay {
+			t.Errorf("first retry delay = %s, want %s", delay, bigQueryLoadInitialDelay)
+		}
+		return nil
+	}
+	t.Cleanup(func() { waitForBigQueryRetry = originalWait })
+
+	repo.EXPECT().ListPending(gomock.Any()).Return([]*domain.File{file}, nil)
+	driveClient.EXPECT().DownloadFile(gomock.Any(), file.DriveFileID).Return([]byte("# Overview\nSummary."), nil)
+
+	chunkAttempts := 0
+	bqClient.EXPECT().InsertRows(gomock.Any(), "chunks", gomock.Any()).Times(2).
+		DoAndReturn(func(_ context.Context, _ string, _ []map[string]bigquery.Value) error {
+			chunkAttempts++
+			if chunkAttempts == 1 {
+				return &googleapi.Error{Code: 503, Message: "Service Unavailable"}
+			}
+			return nil
+		})
+	bqClient.EXPECT().InsertRows(gomock.Any(), "drive_files", gomock.Any()).Return(nil)
+	repo.EXPECT().UpdateStatus(gomock.Any(), file.DriveFileID, domain.SyncStatusDone).Return(nil)
+
+	if err := Run(context.Background(), repo, driveClient, bqClient); err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+}
+
+func TestRun_DoesNotRetryNonRetryableBigQueryError(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	repo := repoMock.NewMockFileRepo(ctrl)
+	driveClient := driveMock.NewMockDriveClient(ctrl)
+	bqClient := bqMock.NewMockBQClient(ctrl)
+	file := &domain.File{DriveFileID: "markdown-file-id", MimeType: "text/markdown"}
+
+	repo.EXPECT().ListPending(gomock.Any()).Return([]*domain.File{file}, nil)
+	driveClient.EXPECT().DownloadFile(gomock.Any(), file.DriveFileID).Return([]byte("# Overview\nSummary."), nil)
+	bqClient.EXPECT().InsertRows(gomock.Any(), "chunks", gomock.Any()).Times(1).
+		Return(&googleapi.Error{Code: 400, Message: "Bad Request"})
+	repo.EXPECT().UpdateStatus(gomock.Any(), file.DriveFileID, domain.SyncStatusFailed).Return(nil)
+
+	if err := Run(context.Background(), repo, driveClient, bqClient); err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+}
+
+func TestRun_MarksFailedAfterTransientRetriesAreExhausted(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	repo := repoMock.NewMockFileRepo(ctrl)
+	driveClient := driveMock.NewMockDriveClient(ctrl)
+	bqClient := bqMock.NewMockBQClient(ctrl)
+	file := &domain.File{DriveFileID: "markdown-file-id", MimeType: "text/markdown"}
+
+	originalWait := waitForBigQueryRetry
+	waitForBigQueryRetry = func(_ context.Context, _ time.Duration) error { return nil }
+	t.Cleanup(func() { waitForBigQueryRetry = originalWait })
+
+	repo.EXPECT().ListPending(gomock.Any()).Return([]*domain.File{file}, nil)
+	driveClient.EXPECT().DownloadFile(gomock.Any(), file.DriveFileID).Return([]byte("# Overview\nSummary."), nil)
+	bqClient.EXPECT().InsertRows(gomock.Any(), "chunks", gomock.Any()).Times(bigQueryLoadMaxAttempts).
+		Return(&googleapi.Error{Code: 503, Message: "Service Unavailable"})
+	repo.EXPECT().UpdateStatus(gomock.Any(), file.DriveFileID, domain.SyncStatusFailed).Return(nil)
+
+	if err := Run(context.Background(), repo, driveClient, bqClient); err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+}
+
+func TestRun_DoesNotRetryDriveFilesLoad(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	repo := repoMock.NewMockFileRepo(ctrl)
+	driveClient := driveMock.NewMockDriveClient(ctrl)
+	bqClient := bqMock.NewMockBQClient(ctrl)
+	file := &domain.File{DriveFileID: "test-drive-id"}
+
+	repo.EXPECT().ListPending(gomock.Any()).Return([]*domain.File{file}, nil)
+	driveClient.EXPECT().DownloadFile(gomock.Any(), file.DriveFileID).Return([]byte("data"), nil)
+	bqClient.EXPECT().InsertRows(gomock.Any(), "drive_files", gomock.Any()).Times(1).
+		Return(&googleapi.Error{Code: 503, Message: "Service Unavailable"})
+	repo.EXPECT().UpdateStatus(gomock.Any(), file.DriveFileID, domain.SyncStatusFailed).Return(nil)
+
+	if err := Run(context.Background(), repo, driveClient, bqClient); err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+}
+
+func TestInsertRowsWithRetry_DoesNotRetryContextCancellation(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	bqClient := bqMock.NewMockBQClient(ctrl)
+	bqClient.EXPECT().InsertRows(gomock.Any(), "chunks", gomock.Any()).Times(1).Return(context.Canceled)
+
+	err := insertRowsWithRetry(context.Background(), bqClient, "chunks", nil)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("insertRowsWithRetry() error = %v, want context.Canceled", err)
+	}
+}
+
+func TestIsRetryableBigQueryError(t *testing.T) {
+	for _, code := range []int{500, 502, 503, 504} {
+		if !isRetryableBigQueryError(&googleapi.Error{Code: code}) {
+			t.Errorf("HTTP %d should be retryable", code)
+		}
+	}
+	for _, err := range []error{
+		&googleapi.Error{Code: 400},
+		errors.New("network error"),
+		context.Canceled,
+		context.DeadlineExceeded,
+	} {
+		if isRetryableBigQueryError(err) {
+			t.Errorf("%v should not be retryable", err)
+		}
 	}
 }
 

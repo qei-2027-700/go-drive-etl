@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"errors"
 	"fmt"
 	"log"
 	"sync"
@@ -15,6 +16,7 @@ import (
 	"github.com/qei-2027-700/go-drive-etl/internal/drive"
 	"github.com/qei-2027-700/go-drive-etl/internal/parser"
 	"github.com/qei-2027-700/go-drive-etl/internal/repository"
+	"google.golang.org/api/googleapi"
 )
 
 var workspaceExportMimeTypes = map[string]string{
@@ -22,6 +24,15 @@ var workspaceExportMimeTypes = map[string]string{
 	"application/vnd.google-apps.spreadsheet":  "text/csv",
 	"application/vnd.google-apps.presentation": "application/pdf",
 }
+
+const (
+	bigQueryLoadMaxAttempts  = 3
+	bigQueryLoadInitialDelay = time.Second
+)
+
+// waitForBigQueryRetry is a variable so retry behavior can be tested without
+// waiting for the production backoff interval.
+var waitForBigQueryRetry = waitForContext
 
 type WorkerPool interface {
 	Run(
@@ -122,7 +133,7 @@ func Run(
 								"is_deleted":       true,
 							})
 						}
-						if err := bqClient.InsertRows(ctx, "chunks", chunkRows); err != nil {
+						if err := insertRowsWithRetry(ctx, bqClient, "chunks", chunkRows); err != nil {
 							if ctx.Err() != nil {
 								return
 							}
@@ -145,6 +156,9 @@ func Run(
 							"updated_at":    time.Now().UTC(),
 						},
 					}
+					// drive_files has no deduplicating view. Do not retry its Load Job:
+					// a jobs.insert 5xx can leave its creation outcome unknown and a retry
+					// could append duplicate metadata rows.
 					if err := bqClient.InsertRows(ctx, "drive_files", rows); err != nil {
 						if ctx.Err() != nil {
 							return
@@ -181,4 +195,86 @@ func Run(
 
 	wg.Wait()
 	return nil
+}
+
+// insertRowsWithRetry retries transient HTTP failures only for chunks Load
+// Jobs. A jobs.insert response can be ambiguous, but chunks are append-only and
+// chunks_current removes duplicate chunk versions. Context cancellation and all
+// non-5xx errors are returned immediately.
+func insertRowsWithRetry(
+	ctx context.Context,
+	client bq.BQClient,
+	table string,
+	rows []map[string]bigquery.Value,
+) error {
+	var lastErr error
+	for attempt := 1; attempt <= bigQueryLoadMaxAttempts; attempt++ {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+
+		lastErr = client.InsertRows(ctx, table, rows)
+		if lastErr == nil {
+			return nil
+		}
+		if !isRetryableBigQueryError(lastErr) {
+			log.Printf("BigQuery Load Job failed without retry: table=%s attempts=%d err=%v", table, attempt, lastErr)
+			return lastErr
+		}
+		if attempt == bigQueryLoadMaxAttempts {
+			break
+		}
+
+		delay := bigQueryLoadInitialDelay * time.Duration(1<<(attempt-1))
+		log.Printf(
+			"BigQuery Load Job retrying: table=%s retry=%d/%d wait=%s err=%v",
+			table,
+			attempt,
+			bigQueryLoadMaxAttempts-1,
+			delay,
+			lastErr,
+		)
+		if err := waitForBigQueryRetry(ctx, delay); err != nil {
+			log.Printf("BigQuery Load Job retry interrupted: table=%s retries=%d err=%v", table, attempt, err)
+			return err
+		}
+	}
+
+	log.Printf(
+		"BigQuery Load Job failed after retries: table=%s attempts=%d err=%v",
+		table,
+		bigQueryLoadMaxAttempts,
+		lastErr,
+	)
+	return lastErr
+}
+
+func isRetryableBigQueryError(err error) bool {
+	if err == nil || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return false
+	}
+
+	var apiErr *googleapi.Error
+	if !errors.As(err, &apiErr) {
+		return false
+	}
+
+	switch apiErr.Code {
+	case 500, 502, 503, 504:
+		return true
+	default:
+		return false
+	}
+}
+
+func waitForContext(ctx context.Context, delay time.Duration) error {
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+
+	select {
+	case <-timer.C:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
