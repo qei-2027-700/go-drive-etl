@@ -118,6 +118,8 @@ for i := 0; i < 5; i++ {
 - Google Docs / Sheets / Slides など `md5Checksum` が空のファイルは比較できないため、検出するたびに `pending` に戻して再処理する
 - ステータスは `pending → processing → done / failed` と遷移し、失敗したファイルだけを次回拾い直せる
 
+BigQuery の `chunks` は BigQuery Sandbox でも使える append-only テーブルである。`content_version`（内容の SHA-256）と `ingested_at` を各チャンクに保持し、再実行で物理的な重複が生じても `chunks_current` View が最新バージョンだけを重複なく公開する。RAG など後続処理は `chunks` ではなく、この View を参照する。
+
 実装は [internal/repository/firestore_repository.go](internal/repository/firestore_repository.go)。PostgreSQL 側のスキーマは [migrations/001_init.sql](migrations/001_init.sql)。
 
 ### 4. Protocol Buffers によるスキーマ管理

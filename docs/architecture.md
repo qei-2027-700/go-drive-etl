@@ -171,6 +171,10 @@ Go Worker（ETL）
 - [ ] Terraform で BQ テーブルを IaC 管理
 - [ ] `go test ./...` が通る状態を維持
 
+### Chunk 層の参照方法
+
+BigQuery Sandbox は DML をサポートしないため、`chunks` は append-only にする。各行は `content_version` と `ingested_at` を持ち、空のファイル版は tombstone 行で表現する。`chunks_current` View がファイルごとの最新バージョンとチャンク重複の除去を担うため、RAG を含む後続処理はこの View を参照する。
+
 ---
 
 ### Phase 2 — RAG Agent（Phase 1 完了後）
