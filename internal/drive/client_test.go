@@ -66,7 +66,7 @@ func TestClientListFiles(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parse query: %v", err)
 	}
-	if got, want := query.Get("q"), "'folder-123' in parents and trashed = false"; got != want {
+	if got, want := query.Get("q"), "'folder-123' in parents and trashed = false and mimeType != 'application/vnd.google-apps.folder'"; got != want {
 		t.Errorf("q: got %q, want %q", got, want)
 	}
 	if got := query.Get("pageToken"); got != "" {
@@ -84,7 +84,7 @@ func TestClientListFiles(t *testing.T) {
 
 func TestClientListFilesWithoutFolder(t *testing.T) {
 	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if got, want := r.URL.Query().Get("q"), "trashed = false"; got != want {
+		if got, want := r.URL.Query().Get("q"), "trashed = false and mimeType != 'application/vnd.google-apps.folder'"; got != want {
 			t.Errorf("q: got %q, want %q", got, want)
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -97,6 +97,36 @@ func TestClientListFilesWithoutFolder(t *testing.T) {
 	}
 	if len(files) != 0 {
 		t.Errorf("file count: got %d, want 0", len(files))
+	}
+}
+
+func TestClientListFilesExcludesFolders(t *testing.T) {
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got, want := r.URL.Query().Get("q"), "'folder-123' in parents and trashed = false and mimeType != 'application/vnd.google-apps.folder'"; got != want {
+			t.Errorf("q: got %q, want %q", got, want)
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"files": []map[string]string{
+				{"id": "folder-1", "name": "nested", "mimeType": folderMimeType},
+				{"id": "file-1", "name": "notes.md", "mimeType": "text/markdown"},
+			},
+		})
+	}))
+
+	files, err := client.ListFiles(context.Background(), "folder-123")
+	if err != nil {
+		t.Fatalf("ListFiles: %v", err)
+	}
+	if len(files) != 1 {
+		t.Fatalf("file count: got %d, want 1", len(files))
+	}
+	if got, want := files[0].Id, "file-1"; got != want {
+		t.Errorf("file ID: got %q, want %q", got, want)
+	}
+	if got, want := files[0].MimeType, "text/markdown"; got != want {
+		t.Errorf("MIME type: got %q, want %q", got, want)
 	}
 }
 

@@ -12,6 +12,8 @@ type Client struct {
 	svc *driveapi.Service
 }
 
+const folderMimeType = "application/vnd.google-apps.folder"
+
 type DriveClient interface {
 	ListFiles(ctx context.Context, folderID string) ([]*driveapi.File, error)
 	DownloadFile(ctx context.Context, fileID string) ([]byte, error)
@@ -41,9 +43,9 @@ func NewClient(ctx context.Context) (*Client, error) {
 
 // ListFiles は指定フォルダ内のファイル一覧を返す。folderID が空の場合は全ファイルを対象とする。
 func (c *Client) ListFiles(ctx context.Context, folderID string) ([]*driveapi.File, error) {
-	q := "trashed = false"
+	q := "trashed = false and mimeType != '" + folderMimeType + "'"
 	if folderID != "" {
-		q = "'" + folderID + "' in parents and trashed = false"
+		q = "'" + folderID + "' in parents and trashed = false and mimeType != '" + folderMimeType + "'"
 	}
 
 	var files []*driveapi.File
@@ -64,7 +66,13 @@ func (c *Client) ListFiles(ctx context.Context, folderID string) ([]*driveapi.Fi
 			return nil, err
 		}
 
-		files = append(files, res.Files...)
+		// The query excludes folders, but retain this guard so an unexpected API
+		// response cannot enqueue a non-downloadable folder for processing.
+		for _, file := range res.Files {
+			if file.MimeType != folderMimeType {
+				files = append(files, file)
+			}
+		}
 
 		if res.NextPageToken == "" {
 			break
