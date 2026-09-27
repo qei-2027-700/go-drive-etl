@@ -156,7 +156,10 @@ func Run(
 							"updated_at":    time.Now().UTC(),
 						},
 					}
-					if err := insertRowsWithRetry(ctx, bqClient, "drive_files", rows); err != nil {
+					// drive_files has no deduplicating view. Do not retry its Load Job:
+					// a jobs.insert 5xx can leave its creation outcome unknown and a retry
+					// could append duplicate metadata rows.
+					if err := bqClient.InsertRows(ctx, "drive_files", rows); err != nil {
 						if ctx.Err() != nil {
 							return
 						}
@@ -194,8 +197,10 @@ func Run(
 	return nil
 }
 
-// insertRowsWithRetry retries only transient HTTP failures from BigQuery Load
-// Jobs. Context cancellation and all non-5xx errors are returned immediately.
+// insertRowsWithRetry retries transient HTTP failures only for chunks Load
+// Jobs. A jobs.insert response can be ambiguous, but chunks are append-only and
+// chunks_current removes duplicate chunk versions. Context cancellation and all
+// non-5xx errors are returned immediately.
 func insertRowsWithRetry(
 	ctx context.Context,
 	client bq.BQClient,
