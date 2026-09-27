@@ -154,18 +154,54 @@ PR をレビューし、問題点や改善点をレビューコメントとし�
     ```
 
 4.  **レビューの送信**  
-    *   **通常のコメントのみ:**
-        ```bash
-        gh pr review <PR番号> --repo qei-2027-700/go-drive-etl --comment --body "<コメント内容>"
-        ```
-    *   **Approve（承認）:**
-        ```bash
-        gh pr review <PR番号> --repo qei-2027-700/go-drive-etl --approve
-        ```
-    *   **Request Changes（変更要求）:**
-        ```bash
-        gh pr review <PR番号> --repo qei-2027-700/go-drive-etl --request-changes --body "<変更が必要な箇所と理由>"
-        ```
+    本文を `--body "..."` やコマンド置換で渡さない。バッククォートを含む Markdown が shell interpolation で変化するため、必ずファイルとして作成し、`scripts/gh-pr-review` を使う。このヘルパーは GitHub Reviews API に本文を raw file として渡し、作成されたレビューの API 応答が元ファイルと完全一致することを検証する。
+
+    ```bash
+    cat > /tmp/pr-review.md <<'EOF'
+    ## 結論
+    変更が必要です。
+
+    ## 指摘
+    - **重要度:** high
+    - **対象:** `internal/example.go:42`
+    - **理由:** `recordID` が未設定のまま保存されます。詳細: https://example.com/design
+    - **推奨対応:** 保存前に `recordID` を検証してください。
+    EOF
+
+    scripts/gh-pr-review <PR番号> REQUEST_CHANGES /tmp/pr-review.md qei-2027-700/go-drive-etl
+    ```
+
+    イベントには `COMMENT`、`APPROVE`、`REQUEST_CHANGES` を指定する。承認も根拠を残す場合は同じテンプレートを使い、本文なしの承認だけは `gh pr review <PR番号> --approve` を使用してよい。
+
+    ヘルパーを使えない状況でも、同じ原則で `gh api --input <json-file>` を使う。本文をシェルの二重引用符、変数展開、コマンド置換に渡してはいけない。
+
+### レビュー本文テンプレート
+
+レビュー本文は、問題の有無にかかわらず次の項目をこの順序で含める。
+
+```md
+## 結論
+<承認 / 変更が必要 / コメントのみ>
+
+## 指摘
+- **重要度:** <critical | high | medium | low | n/a>
+- **対象:** `<ファイル名:行番号>` または `<PR全体>`
+- **理由:** <なぜ問題または判断材料になるか>
+- **推奨対応:** <具体的な変更、または対応不要の理由>
+```
+
+複数の指摘がある場合は、`## 指摘 1`、`## 指摘 2` のように見出しを増やし、それぞれに全項目を記載する。
+
+### 投稿後の検証と訂正
+
+`scripts/gh-pr-review` が `body verified` を表示したことを確認する。必要に応じて次の API 取得でも最新レビューを確認できる。
+
+```bash
+gh api repos/qei-2027-700/go-drive-etl/pulls/<PR番号>/reviews \
+  --jq '.[0] | {id, state, body}'
+```
+
+訂正が必要でも、同じ内容を新しいレビューとして投稿しない。最初に既存レビューの ID と誤りを確認し、GitHub の UI または API で既存のレビューを編集・削除できる場合はそれを更新する。更新できない場合は、重複ではなく一件の明確な訂正コメントで対象レビュー ID を参照し、以後の判断は訂正版だけを参照することを明記する。
 
 ### レビュー観点
 1.  **正確性** — ロジックエラー、境界値処理、リソースリークの有無。

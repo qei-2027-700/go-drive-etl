@@ -1,0 +1,61 @@
+#!/usr/bin/env bash
+# Submit a pull-request review without letting the shell interpolate its body.
+set -euo pipefail
+
+usage() {
+  cat <<'EOF'
+Usage: scripts/gh-pr-review <pull-number> <COMMENT|APPROVE|REQUEST_CHANGES> <body-file> [owner/repo]
+
+The review body is read verbatim from body-file. After creating the review, the
+script compares the GitHub API response with that file and fails if they differ.
+EOF
+}
+
+if [[ $# -lt 3 || $# -gt 4 ]]; then
+  usage >&2
+  exit 2
+fi
+
+pull_number=$1
+event=$2
+body_file=$3
+repository=${4:-}
+
+case "$event" in
+  COMMENT|APPROVE|REQUEST_CHANGES) ;;
+  *)
+    echo "Unsupported review event: $event" >&2
+    usage >&2
+    exit 2
+    ;;
+esac
+
+if [[ ! -f "$body_file" || ! -r "$body_file" ]]; then
+  echo "Review body file is not readable: $body_file" >&2
+  exit 2
+fi
+
+if [[ -z "$repository" ]]; then
+  repository=$(gh repo view --json nameWithOwner --jq .nameWithOwner)
+fi
+
+payload_file=$(mktemp)
+response_file=$(mktemp)
+actual_body_file=$(mktemp)
+trap 'rm -f "$payload_file" "$response_file" "$actual_body_file"' EXIT
+
+# --rawfile preserves backticks, URLs, newlines, and all other Markdown text.
+jq -n --arg event "$event" --rawfile body "$body_file" \
+  '{event: $event, body: $body}' >"$payload_file"
+
+gh api --method POST "repos/$repository/pulls/$pull_number/reviews" \
+  --input "$payload_file" >"$response_file"
+
+# -j avoids appending a newline that might not have existed in the source file.
+jq -rj '.body' "$response_file" >"$actual_body_file"
+if ! cmp -s "$body_file" "$actual_body_file"; then
+  echo "Review was created, but GitHub returned a body different from $body_file." >&2
+  exit 1
+fi
+
+jq -r '"Published review #\(.id); body verified."' "$response_file"
