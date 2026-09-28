@@ -213,7 +213,7 @@ Drive API は OAuth2 のユーザー委譲ではなく、サービスアカウ�
 3. 対象の Drive フォルダ（`DRIVE_FOLDER_ID`）を、サービスアカウントのメールアドレス（`<name>@<project-id>.iam.gserviceaccount.com`）に**閲覧者権限で共有する**。サービスアカウントは独立した利用者のため、共有を忘れるとファイルが 1 件も見えない
 4. ダウンロードした JSON キーのパスを `.env` の `GOOGLE_APPLICATION_CREDENTIALS` に設定する
 
-BigQuery / Firestore は引き続き ADC（Application Default Credentials）で認証する。
+BigQuery / Firestore は引き続き ADC（Application Default Credentials）で認証する。Gold Mart の Scheduled Query は Terraform の `scheduled_query_service_account_email` に指定したサービスアカウントで実行する。
 
 ```bash
 gcloud auth application-default login

@@ -32,3 +32,8 @@ variable "mart_refresh_schedule" {
   type        = string
   default     = "every day 02:00"
 }
+
+variable "scheduled_query_service_account_email" {
+  description = "Gold Mart の Scheduled Query を実行するサービスアカウントのメールアドレス"
+  type        = string
+}
