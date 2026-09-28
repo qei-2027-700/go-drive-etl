@@ -53,6 +53,7 @@ resource "google_bigquery_data_transfer_config" "mart_ingestion_daily" {
   destination_dataset_id = google_bigquery_dataset.gold.dataset_id
   location               = var.location
   schedule               = var.mart_refresh_schedule
+  service_account_name   = var.scheduled_query_service_account_email
 
   params = {
     destination_table_name_template = "mart_ingestion_daily"
@@ -82,6 +83,7 @@ resource "google_bigquery_data_transfer_config" "mart_file_latest" {
   destination_dataset_id = google_bigquery_dataset.gold.dataset_id
   location               = var.location
   schedule               = var.mart_refresh_schedule
+  service_account_name   = var.scheduled_query_service_account_email
 
   params = {
     destination_table_name_template = "mart_file_latest"
