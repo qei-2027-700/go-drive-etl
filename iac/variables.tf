@@ -26,14 +26,3 @@ variable "gold_dataset_id" {
   type        = string
   default     = "etl_gold"
 }
-
-variable "mart_refresh_schedule" {
-  description = "Gold Mart を更新する BigQuery Scheduled Query の UTC スケジュール"
-  type        = string
-  default     = "every day 02:00"
-}
-
-variable "scheduled_query_service_account_email" {
-  description = "Gold Mart の Scheduled Query を実行するサービスアカウントのメールアドレス"
-  type        = string
-}

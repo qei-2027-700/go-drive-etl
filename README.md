@@ -213,7 +213,7 @@ Drive API は OAuth2 のユーザー委譲ではなく、サービスアカウ�
 3. 対象の Drive フォルダ（`DRIVE_FOLDER_ID`）を、サービスアカウントのメールアドレス（`<name>@<project-id>.iam.gserviceaccount.com`）に**閲覧者権限で共有する**。サービスアカウントは独立した利用者のため、共有を忘れるとファイルが 1 件も見えない
 4. ダウンロードした JSON キーのパスを `.env` の `GOOGLE_APPLICATION_CREDENTIALS` に設定する
 
-BigQuery / Firestore は引き続き ADC（Application Default Credentials）で認証する。Gold Mart の Scheduled Query は Terraform の `scheduled_query_service_account_email` に指定したサービスアカウントで実行する。
+BigQuery / Firestore は引き続き ADC（Application Default Credentials）で認証する。Gold Mart の手動更新も、現在の ADC ユーザーの権限で実行する。
 
 ```bash
 gcloud auth application-default login
@@ -251,6 +251,26 @@ terraform init && terraform apply
 ```
 
 BigQuery のデータセット / テーブルに加え、Firestore データベース（`(default)`）と Firestore API の有効化が適用される。
+
+### 5. Gold Mart の手動更新
+
+Gold Mart は BigQuery Data Transfer Service を必要とする Scheduled Query を使わない。ETL を実行した後、および Looker Studio や CSV 出力で最新値を確認する前に、次を実行する。
+
+```bash
+BQ_PROJECT_ID=your-gcp-project-id ./scripts/refresh_gold_marts.sh
+```
+
+既定以外の dataset ID を Terraform に設定した場合は、同じ値を環境変数で指定する。
+
+```bash
+BQ_PROJECT_ID=your-gcp-project-id \
+  BQ_SILVER_DATASET_ID=etl_silver \
+  BQ_GOLD_DATASET_ID=etl_gold \
+  BQ_LOCATION=asia-northeast1 \
+  ./scripts/refresh_gold_marts.sh
+```
+
+`BQ_SILVER_DATASET_ID`、`BQ_GOLD_DATASET_ID`、`BQ_LOCATION` の既定値はそれぞれ `etl_silver`、`etl_gold`、`asia-northeast1` である。このコマンドは、`sql/refresh_gold_marts.sql` にある 2 つの `CREATE OR REPLACE TABLE` を実行する。各 Mart はクエリ成功後に全件置換されるため、以前の `WRITE_TRUNCATE` Scheduled Query と同じ更新結果になる。BigQuery Sandbox でも Billing 設定や Data Transfer API は不要である。
 
 ---
 
