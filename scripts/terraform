@@ -1,0 +1,119 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Run Terraform against one state and one tfvars file shared by every Git
+# worktree on this Mac. This prevents a new worktree from planning to recreate
+# resources that are already managed by another checkout.
+
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+repo_dir="$(cd "${script_dir}/.." && pwd)"
+iac_dir="${repo_dir}/iac"
+state_dir="${GO_DRIVE_ETL_TF_STATE_DIR:-${HOME}/.local/state/go-drive-etl}"
+config_dir="${GO_DRIVE_ETL_TF_CONFIG_DIR:-${HOME}/.config/go-drive-etl}"
+state_path="${state_dir}/terraform.tfstate"
+tfvars_path="${GO_DRIVE_ETL_TFVARS_PATH:-${config_dir}/terraform.tfvars}"
+
+usage() {
+  cat <<'EOF'
+Usage:
+  scripts/terraform migrate-local-state
+  scripts/terraform <terraform-command> [arguments...]
+
+Environment overrides:
+  GO_DRIVE_ETL_TF_STATE_DIR   Shared local state directory
+  GO_DRIVE_ETL_TF_CONFIG_DIR  Shared local configuration directory
+  GO_DRIVE_ETL_TFVARS_PATH    Shared terraform.tfvars path
+  GO_DRIVE_ETL_LEGACY_TF_STATE_PATH   Source state path during migration
+  GO_DRIVE_ETL_LEGACY_TFVARS_PATH     Source tfvars path during migration
+
+Run migrate-local-state once with the most recently applied state as its
+source. After migration, use this wrapper from every worktree for init, plan,
+apply, and state operations.
+EOF
+}
+
+prepare_directories() {
+  umask 077
+  mkdir -p "${state_dir}" "${config_dir}"
+  chmod 700 "${state_dir}" "${config_dir}"
+}
+
+initialize_shared_backend() {
+  if [[ ! -f "${state_path}" ]]; then
+    echo "Shared Terraform state is missing: ${state_path}" >&2
+    echo "Run scripts/terraform migrate-local-state with the latest applied state first." >&2
+    exit 1
+  fi
+
+  terraform -chdir="${iac_dir}" init -reconfigure \
+    -backend-config="path=${state_path}" \
+    >/dev/null
+}
+
+migrate_local_state() {
+  local legacy_state_path="${GO_DRIVE_ETL_LEGACY_TF_STATE_PATH:-${iac_dir}/terraform.tfstate}"
+  local legacy_tfvars_path="${GO_DRIVE_ETL_LEGACY_TFVARS_PATH:-${iac_dir}/terraform.tfvars}"
+  local timestamp
+
+  prepare_directories
+
+  if [[ ! -f "${legacy_state_path}" ]]; then
+    echo "Legacy Terraform state is missing: ${legacy_state_path}" >&2
+    exit 1
+  fi
+  if [[ -e "${state_path}" ]]; then
+    echo "Shared Terraform state already exists: ${state_path}" >&2
+    echo "Refusing to overwrite it." >&2
+    exit 1
+  fi
+
+  timestamp="$(date -u +%Y%m%dT%H%M%SZ)"
+  cp -p "${legacy_state_path}" "${state_dir}/terraform.tfstate.pre-migration-${timestamp}.backup"
+  chmod 600 "${state_dir}/terraform.tfstate.pre-migration-${timestamp}.backup"
+  cp -p "${legacy_state_path}" "${state_path}"
+  chmod 600 "${state_path}"
+
+  if [[ -f "${legacy_tfvars_path}" && ! -e "${tfvars_path}" ]]; then
+    cp -p "${legacy_tfvars_path}" "${tfvars_path}"
+    chmod 600 "${tfvars_path}"
+  fi
+
+  terraform -chdir="${iac_dir}" init -reconfigure \
+    -backend-config="path=${state_path}"
+
+  echo "Shared state: ${state_path}"
+  echo "Shared tfvars: ${tfvars_path}"
+  echo "Keep the original ignored state file until the shared-state plan is verified."
+}
+
+if [[ $# -eq 0 || "${1}" == "-h" || "${1}" == "--help" ]]; then
+  usage
+  exit 0
+fi
+
+if [[ "${1}" == "migrate-local-state" ]]; then
+  migrate_local_state
+  exit 0
+fi
+
+prepare_directories
+initialize_shared_backend
+
+command=("${1}")
+shift
+case "${command[0]}" in
+  apply|console|destroy|import|plan|refresh)
+    if [[ -f "${tfvars_path}" ]]; then
+      command+=("-var-file=${tfvars_path}")
+    fi
+    ;;
+esac
+command+=("$@")
+
+if [[ "${command[0]}" == "apply" ]]; then
+  timestamp="$(date -u +%Y%m%dT%H%M%SZ)"
+  cp -p "${state_path}" "${state_dir}/terraform.tfstate.pre-apply-${timestamp}.backup"
+  chmod 600 "${state_dir}/terraform.tfstate.pre-apply-${timestamp}.backup"
+fi
+
+exec terraform -chdir="${iac_dir}" "${command[@]}"

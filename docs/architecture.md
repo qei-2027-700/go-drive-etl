@@ -143,7 +143,8 @@ iac/
 
 ### 方針
 
-- ステートはローカルの `terraform.tfstate`。複数環境を扱う段階で GCS バックエンドへ移す
+- state は `~/.local/state/go-drive-etl/terraform.tfstate` に集約し、`scripts/terraform` を経由して全 worktree で共有する。Cloud Billing を有効化しない間は GCS backend を使わない。初回移行では、最後に `apply` した state を正本として明示的に指定する
+- state と `terraform.tfvars` は Git 管理外かつ所有者限定のファイル権限で保持する。PC故障に備え、OS のバックアップ機能を有効にする。複数端末での共同編集が必要になった時点で、ロックと世代管理を持つリモート backend へ移行する
 - 環境は `dev` のみで開始し、将来 `prod` を追加
 - ADC（Application Default Credentials）で認証（ローカル: `gcloud auth application-default login`）
 
