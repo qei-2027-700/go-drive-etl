@@ -5,9 +5,9 @@
 
 ## 現在地
 
-Phase 1（AI-Ready Pipeline）と Phase 3（BI & Delivery）の実装は完了している。Google Drive からの取得、Firestore による冪等管理、Markdown のチャンク化、BigQuery へのロード、Gold Mart の CSV 配信、データポータルでの可視化までを備える。
+Phase 1（Markdown を対象とする AI-Ready Pipeline）と Phase 3（BI & Delivery）の実装は完了している。Google Drive からの取得、Firestore による冪等管理、Markdown のチャンク化、BigQuery へのロード、Gold Mart の CSV 配信、データポータルでの可視化までを備える。
 
-現在の未完了は、RAG を完成させる Phase 2 の Issue 群だけである。依存順は **#36 → #37 → #38 → #39**（親: #23）。
+現在の未完了の**機能開発**は、RAG を完成させる Phase 2 の Issue 群だけである。依存順は **#36 → #37 → #38 → #39**（親: #23）。Protobuf 再生成の手順整備は、機能開発とは別の開発基盤タスクとして残っている。
 
 | Issue | 内容 | 状態 |
 |---:|---|:---:|
@@ -22,7 +22,7 @@ Phase 1（AI-Ready Pipeline）と Phase 3（BI & Delivery）の実装は完了�
 
 ## フェーズ別ステータス
 
-### Phase 1: AI-Ready Pipeline
+### Phase 1: AI-Ready Pipeline（Markdown 初期スコープ）
 
 | 領域 | 状態 | 根拠 |
 |---|:---:|---|
