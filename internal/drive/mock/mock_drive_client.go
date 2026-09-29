@@ -85,3 +85,17 @@ func (mr *MockDriveClientMockRecorder) ListFiles(ctx, folderID any) *gomock.Call
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListFiles", reflect.TypeOf((*MockDriveClient)(nil).ListFiles), ctx, folderID)
 }
+
+// UpsertFile mocks base method.
+func (m *MockDriveClient) UpsertFile(ctx context.Context, folderID, name, mimeType string, content []byte) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpsertFile", ctx, folderID, name, mimeType, content)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// UpsertFile indicates an expected call of UpsertFile.
+func (mr *MockDriveClientMockRecorder) UpsertFile(ctx, folderID, name, mimeType, content any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpsertFile", reflect.TypeOf((*MockDriveClient)(nil).UpsertFile), ctx, folderID, name, mimeType, content)
+}

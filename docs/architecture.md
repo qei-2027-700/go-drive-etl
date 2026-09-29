@@ -163,7 +163,7 @@ flowchart LR
 
 - Bronze は append-only の `chunks` と、最新コンテンツ版を公開する `chunks_current` で構成する。
 - Silver は `chunks_current` だけを入力とする View であり、`ingested_date`（Asia/Tokyo）、`content_length`、`is_embedded` を一貫して提供する。RAG は `chunks_current`、BI とレポートは Gold Mart を参照する。
-- Gold は `mart_ingestion_daily`（日別のユニークファイル数・チャンク数・文字数・embedding 状態）と `mart_file_latest`（ファイルごとの最新サマリ）を物理テーブルとして提供する。ETL 後または BI / CSV 確認前に `BQ_PROJECT_ID=<project-id> ./scripts/refresh_gold_marts.sh` を実行し、両テーブルを全件再計算する。SQL は `sql/refresh_gold_marts.sql` でバージョン管理し、`CREATE OR REPLACE TABLE` により `WRITE_TRUNCATE` 相当で更新する。
+- Gold は `mart_ingestion_daily`（日別のユニークファイル数・チャンク数・文字数・embedding 状態）と `mart_file_latest`（ファイルごとの最新サマリ）を物理テーブルとして提供する。ETL 後または BI / CSV 確認前に `BQ_PROJECT_ID=<project-id> ./scripts/refresh_gold_marts.sh` を実行し、両テーブルを全件再計算する。SQL は `sql/refresh_gold_marts.sql` でバージョン管理し、`CREATE OR REPLACE TABLE` により `WRITE_TRUNCATE` 相当で更新する。Worker に `DRIVE_EXPORT_FOLDER_ID`（`/export-reports/` のフォルダ ID）を設定すると、`BIGQUERY_GOLD_DATASET_ID`（既定: `etl_gold`）の両 Mart を CSV 化して同名ファイルを更新するため、再実行してもレポートは重複しない。
 - Bronze の 60 日 TTL は `etl_raw` のみに適用する。Silver / Gold の保持期間は用途に応じて明示的に管理し、Bronze の既定 TTL を継承しない。
 - 現 Worker は `drive_files` を BigQuery にロードしていないため、初期 Mart は `chunks_current` から得られる指標に限定する。ファイル名・MIME type 別の分析が必要になった時点で `drive_files` のロードを追加する。
 

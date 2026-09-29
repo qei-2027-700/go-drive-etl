@@ -47,7 +47,7 @@ func run() error {
 	}
 	defer bq.Close()
 
-	if err := runPipeline(ctx, repo, driveClient, bq, os.Getenv("DRIVE_FOLDER_ID")); err != nil {
+	if err := runPipeline(ctx, repo, driveClient, bq, os.Getenv("DRIVE_FOLDER_ID"), os.Getenv("DRIVE_EXPORT_FOLDER_ID")); err != nil {
 		if errors.Is(err, context.Canceled) {
 			log.Println("停止シグナルを受信しました。安全にシャットダウンします。")
 			return nil
@@ -69,6 +69,7 @@ func runPipeline(
 	driveClient drive.DriveClient,
 	bq bqclient.BQClient,
 	folderID string,
+	exportFolderID string,
 ) error {
 	files, err := driveClient.ListFiles(ctx, folderID)
 	if err != nil {
@@ -91,6 +92,24 @@ func runPipeline(
 	log.Printf("Drive ファイルを %d 件検出しました。Worker Pool を開始します。", len(files))
 	if err := etl.Run(ctx, repo, driveClient, bq); err != nil {
 		return fmt.Errorf("Worker Pool の実行に失敗: %w", err)
+	}
+	return exportGoldReports(ctx, driveClient, bq, exportFolderID)
+}
+
+func exportGoldReports(ctx context.Context, driveClient drive.DriveClient, bq bqclient.BQClient, exportFolderID string) error {
+	if exportFolderID == "" {
+		log.Println("DRIVE_EXPORT_FOLDER_ID が未設定のため Gold CSV の出力をスキップします。")
+		return nil
+	}
+	for _, table := range []string{"mart_ingestion_daily", "mart_file_latest"} {
+		contents, err := bq.ExportTableCSV(ctx, table)
+		if err != nil {
+			return fmt.Errorf("Gold Mart の CSV 抽出に失敗: table=%s: %w", table, err)
+		}
+		name := table + ".csv"
+		if err := driveClient.UpsertFile(ctx, exportFolderID, name, "text/csv", contents); err != nil {
+			return fmt.Errorf("Gold Mart CSV の Drive 出力に失敗: file=%s: %w", name, err)
+		}
 	}
 	return nil
 }

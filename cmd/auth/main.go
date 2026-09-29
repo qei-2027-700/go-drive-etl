@@ -32,8 +32,8 @@ func main() {
 		Endpoint:     google.Endpoint,
 		// リダイレクト先としてローカルサーバーを指定
 		RedirectURL: "http://localhost:8080/callback",
-		// Drive API の読み取り権限を要求
-		Scopes: []string{driveapi.DriveReadonlyScope},
+		// Worker が CSV を作成・更新できる Drive 権限を要求する。
+		Scopes: []string{driveapi.DriveScope},
 	}
 
 	// 3. リフレッシュトークンを取得するため、AccessTypeOffline と ApprovalForce を設定
