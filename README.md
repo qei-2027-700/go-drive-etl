@@ -196,7 +196,8 @@ cp .env.example .env
 
 | 変数 | 用途 |
 |:---|:---|
-| `GOOGLE_APPLICATION_CREDENTIALS` | Drive API の認証に使うサービスアカウントの JSON キーへのパス |
+| `GOOGLE_APPLICATION_CREDENTIALS` | OAuth を設定しない場合に Drive API の認証に使うサービスアカウントの JSON キーへのパス |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` / `GOOGLE_REFRESH_TOKEN` | My Drive に書き込む場合の OAuth ユーザー認証。3つ全てを設定するとサービスアカウントより優先される |
 | `BIGQUERY_PROJECT_ID` / `BIGQUERY_DATASET_ID` | ロード先の BigQuery |
 | `DRIVE_FOLDER_ID` | 回収対象の Drive フォルダ |
 | `STATE_BACKEND` | 状態管理のバックエンド。`postgres` または `firestore`（省略時は `firestore`） |
@@ -219,8 +220,8 @@ BigQuery / Firestore は引き続き ADC（Application Default Credentials）で
 gcloud auth application-default login
 ```
 
-> **OAuth2 ユーザー委譲方式（フォールバック）**
-> サービスアカウント方式が使えない環境向けに、コードと手順は残してある。`.env.example` の `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` / `GOOGLE_REFRESH_TOKEN` のコメントを外し、`go run ./cmd/auth/` でリフレッシュトークンを取得する。有効化する場合は `internal/drive/client.go` の `NewClient` も OAuth 版に戻す必要がある（同ファイルのコメントに手順を記載）。通常は使わない。
+> **OAuth2 ユーザー委譲方式（マイドライブへ出力する場合）**
+> `.env` に `GOOGLE_CLIENT_ID` と `GOOGLE_CLIENT_SECRET` を設定し、`go run ./cmd/auth/` でリフレッシュトークンを取得する。表示された `GOOGLE_REFRESH_TOKEN` も `.env` に設定すると、Worker は OAuth を優先してあなたのマイドライブへ書き込む。OAuth 同意画面が「テスト中」の場合、リフレッシュトークンは 7 日で失効するため、長期運用では公開ステータスや Workspace の運用設定も確認する。
 
 ### 3. 状態管理 DB の起動
 

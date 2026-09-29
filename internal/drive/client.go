@@ -1,10 +1,17 @@
 package drive
 
 import (
+	"bytes"
 	"context"
+	"fmt"
 	"io"
+	"os"
+	"strings"
 
+	"golang.org/x/oauth2"
+	"golang.org/x/oauth2/google"
 	driveapi "google.golang.org/api/drive/v3"
+	"google.golang.org/api/googleapi"
 	"google.golang.org/api/option"
 )
 
@@ -18,27 +25,60 @@ type DriveClient interface {
 	ListFiles(ctx context.Context, folderID string) ([]*driveapi.File, error)
 	DownloadFile(ctx context.Context, fileID string) ([]byte, error)
 	DownloadGoogleWorkspaceFile(ctx context.Context, fileID string, exportMimeType string) ([]byte, error)
+	UpsertFile(ctx context.Context, folderID, name, mimeType string, content []byte) error
 }
 
-// NewClient は ADC（Application Default Credentials）で Drive API クライアントを作成する。
-// サービスアカウントの JSON キーを環境変数 GOOGLE_APPLICATION_CREDENTIALS で指定して使う
-// （利用前に対象フォルダをサービスアカウントのメールアドレスに共有しておくこと）。
-//
-// OAuth 2.0 ユーザー委譲方式に戻したい場合（サービスアカウント方式が使えない環境など）:
-//  1. cmd/auth/ を実行してリフレッシュトークンを取得
-//  2. .env.example にある GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET / GOOGLE_REFRESH_TOKEN の
-//     コメントを外して設定する
-//  3. 本関数を、golang.org/x/oauth2 の oauth2.Config + TokenSource を使う実装に戻す
-//     （このコミット以前の git 履歴を参照。#73 でサービスアカウント方式に切り替えた）
+// NewClient creates an OAuth user-delegated client when all OAuth environment
+// variables are configured. Otherwise it uses Application Default Credentials,
+// which is appropriate for a service account and shared drives.
 func NewClient(ctx context.Context) (*Client, error) {
-	svc, err := driveapi.NewService(ctx,
-		option.WithScopes(driveapi.DriveReadonlyScope),
-	)
+	clientID := os.Getenv("GOOGLE_CLIENT_ID")
+	clientSecret := os.Getenv("GOOGLE_CLIENT_SECRET")
+	refreshToken := os.Getenv("GOOGLE_REFRESH_TOKEN")
+
+	var opts []option.ClientOption
+	if clientID != "" && clientSecret != "" && refreshToken != "" {
+		conf := &oauth2.Config{
+			ClientID:     clientID,
+			ClientSecret: clientSecret,
+			Endpoint:     google.Endpoint,
+			Scopes:       []string{driveapi.DriveScope},
+		}
+		opts = append(opts, option.WithTokenSource(conf.TokenSource(ctx, &oauth2.Token{RefreshToken: refreshToken})))
+	} else {
+		opts = append(opts, option.WithScopes(driveapi.DriveScope))
+	}
+
+	svc, err := driveapi.NewService(ctx, opts...)
 	if err != nil {
 		return nil, err
 	}
 
 	return &Client{svc: svc}, nil
+}
+
+// UpsertFile updates a same-named file in folderID, or creates it when absent.
+// Stable names make report delivery idempotent across worker runs.
+func (c *Client) UpsertFile(ctx context.Context, folderID, name, mimeType string, content []byte) error {
+	if folderID == "" {
+		return fmt.Errorf("export folder ID is required")
+	}
+	q := fmt.Sprintf("'%s' in parents and name = '%s' and trashed = false", driveQueryLiteral(folderID), driveQueryLiteral(name))
+	files, err := c.svc.Files.List().Q(q).Fields("files(id, name)").Context(ctx).Do()
+	if err != nil {
+		return err
+	}
+	media := googleapi.ContentType(mimeType)
+	if len(files.Files) > 0 {
+		_, err = c.svc.Files.Update(files.Files[0].Id, &driveapi.File{Name: name, MimeType: mimeType}).Media(bytes.NewReader(content), media).Context(ctx).Do()
+		return err
+	}
+	_, err = c.svc.Files.Create(&driveapi.File{Name: name, MimeType: mimeType, Parents: []string{folderID}}).Media(bytes.NewReader(content), media).Context(ctx).Do()
+	return err
+}
+
+func driveQueryLiteral(value string) string {
+	return strings.ReplaceAll(value, "'", "\\'")
 }
 
 // ListFiles は指定フォルダ内のファイル一覧を返す。folderID が空の場合は全ファイルを対象とする。

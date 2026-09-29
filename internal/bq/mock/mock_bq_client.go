@@ -41,6 +41,21 @@ func (m *MockBQClient) EXPECT() *MockBQClientMockRecorder {
 	return m.recorder
 }
 
+// ExportTableCSV mocks base method.
+func (m *MockBQClient) ExportTableCSV(ctx context.Context, table string) ([]byte, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ExportTableCSV", ctx, table)
+	ret0, _ := ret[0].([]byte)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ExportTableCSV indicates an expected call of ExportTableCSV.
+func (mr *MockBQClientMockRecorder) ExportTableCSV(ctx, table any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ExportTableCSV", reflect.TypeOf((*MockBQClient)(nil).ExportTableCSV), ctx, table)
+}
+
 // InsertRows mocks base method.
 func (m *MockBQClient) InsertRows(ctx context.Context, table string, rows []map[string]bigquery.Value) error {
 	m.ctrl.T.Helper()

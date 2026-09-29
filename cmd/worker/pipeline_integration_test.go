@@ -86,7 +86,7 @@ func TestPipelineWithFirestore(t *testing.T) {
 		},
 	)
 
-	if err := runPipeline(ctx, repository.NewFirestoreFileRepository(client), driveClient, bqClient, "folder-123"); err != nil {
+	if err := runPipeline(ctx, repository.NewFirestoreFileRepository(client), driveClient, bqClient, "folder-123", ""); err != nil {
 		t.Fatalf("runPipeline: %v", err)
 	}
 

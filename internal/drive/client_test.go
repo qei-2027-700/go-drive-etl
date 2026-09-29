@@ -1,8 +1,10 @@
 package drive
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -177,5 +179,56 @@ func TestClientDownloadGoogleWorkspaceFile(t *testing.T) {
 
 	if string(got) != string(want) {
 		t.Fatalf("contents: got %q, want %q", got, want)
+	}
+}
+
+func TestClientUpsertFileCreatesWhenMissing(t *testing.T) {
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/drive/v3/files":
+			if got, want := r.URL.Query().Get("q"), "'folder-123' in parents and name = 'report.csv' and trashed = false"; got != want {
+				t.Errorf("query: got %q, want %q", got, want)
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"files":[]}`))
+		case "/upload/drive/v3/files":
+			if got, want := r.Method, http.MethodPost; got != want {
+				t.Errorf("method: got %s, want %s", got, want)
+			}
+			body, _ := io.ReadAll(r.Body)
+			if !bytes.Contains(body, []byte("file contents")) {
+				t.Errorf("upload body does not contain file contents: %q", body)
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"id":"new-file"}`))
+		default:
+			t.Errorf("unexpected path %q", r.URL.Path)
+		}
+	}))
+
+	if err := client.UpsertFile(context.Background(), "folder-123", "report.csv", "text/csv", []byte("file contents\n")); err != nil {
+		t.Fatalf("UpsertFile: %v", err)
+	}
+}
+
+func TestClientUpsertFileUpdatesExistingFile(t *testing.T) {
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/drive/v3/files":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"files":[{"id":"existing-file","name":"report.csv"}]}`))
+		case "/upload/drive/v3/files/existing-file":
+			if got, want := r.Method, http.MethodPatch; got != want {
+				t.Errorf("method: got %s, want %s", got, want)
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"id":"existing-file"}`))
+		default:
+			t.Errorf("unexpected path %q", r.URL.Path)
+		}
+	}))
+
+	if err := client.UpsertFile(context.Background(), "folder-123", "report.csv", "text/csv", []byte("new contents\n")); err != nil {
+		t.Fatalf("UpsertFile: %v", err)
 	}
 }
