@@ -9,7 +9,9 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
+	"github.com/getsentry/sentry-go"
 	"github.com/joho/godotenv"
 	bqclient "github.com/qei-2027-700/go-drive-etl/internal/bq"
 	"github.com/qei-2027-700/go-drive-etl/internal/domain"
@@ -19,8 +21,22 @@ import (
 )
 
 func main() {
+	_ = godotenv.Load()
+	if err := sentry.Init(sentryOptions()); err != nil {
+		log.Fatalf("Sentry の初期化に失敗: %v", err)
+	}
+
 	if err := run(); err != nil {
+		sentry.CaptureException(err)
+		sentry.Flush(2 * time.Second)
 		log.Fatal(err)
+	}
+}
+
+func sentryOptions() sentry.ClientOptions {
+	return sentry.ClientOptions{
+		Dsn:         os.Getenv("SENTRY_DSN"),
+		Environment: os.Getenv("SENTRY_ENVIRONMENT"),
 	}
 }
 
