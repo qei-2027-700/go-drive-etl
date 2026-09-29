@@ -200,6 +200,8 @@ cp .env.example .env
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` / `GOOGLE_REFRESH_TOKEN` | My Drive に書き込む場合の OAuth ユーザー認証。3つ全てを設定するとサービスアカウントより優先される |
 | `BIGQUERY_PROJECT_ID` / `BIGQUERY_DATASET_ID` | ロード先の BigQuery |
 | `DRIVE_FOLDER_ID` | 回収対象の Drive フォルダ |
+| `SENTRY_DSN` | Worker の失敗通知先。未設定時は Sentry 通知を無効化する |
+| `SENTRY_ENVIRONMENT` | Sentry イベントに付与する環境名（例: `local`、`production`） |
 | `STATE_BACKEND` | 状態管理のバックエンド。`postgres` または `firestore`（省略時は `firestore`） |
 | `GOOGLE_CLOUD_PROJECT` | Firestore を使う場合の GCP プロジェクト |
 | `FIRESTORE_EMULATOR_HOST` | ローカルでエミュレータを使う場合のみ設定する（例: `localhost:8080`）。本番の Firestore に接続するときは必ず空にする |
@@ -222,6 +224,9 @@ gcloud auth application-default login
 
 > **OAuth2 ユーザー委譲方式（マイドライブへ出力する場合）**
 > `.env` に `GOOGLE_CLIENT_ID` と `GOOGLE_CLIENT_SECRET` を設定し、`go run ./cmd/auth/` でリフレッシュトークンを取得する。表示された `GOOGLE_REFRESH_TOKEN` も `.env` に設定すると、Worker は OAuth を優先してあなたのマイドライブへ書き込む。OAuth 同意画面が「テスト中」の場合、リフレッシュトークンは 7 日で失効するため、長期運用では公開ステータスや Workspace の運用設定も確認する。
+
+> **Sentry エラー通知**
+> `.env` に Sentry プロジェクトの `SENTRY_DSN` と `SENTRY_ENVIRONMENT` を設定すると、Worker の失敗を例外として送信する。終了前に最大2秒待機してイベントを送信するため、単発実行の Worker でも通知を取りこぼさない。DSN は `.env` にのみ保存し、リポジトリへコミットしない。
 
 ### 3. 状態管理 DB の起動
 

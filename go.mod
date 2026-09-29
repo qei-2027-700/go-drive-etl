@@ -7,6 +7,7 @@ toolchain go1.26.6
 require (
 	cloud.google.com/go/bigquery v1.82.0
 	cloud.google.com/go/firestore v1.25.0
+	github.com/getsentry/sentry-go v0.49.0
 	github.com/jackc/pgx/v5 v5.10.0
 	github.com/joho/godotenv v1.5.1
 	go.uber.org/mock v0.6.0
