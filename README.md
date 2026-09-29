@@ -250,11 +250,31 @@ docker compose exec -T postgres psql -U app -d app_db < migrations/001_init.sql
 
 ### 4. インフラの適用
 
+初回だけ、既存のローカル state と `terraform.tfvars` を worktree 共通の
+ローカルパスへ移す。課金を有効化しないため、GCS backend は使用しない。
+
 ```bash
-cd iac
-cp terraform.tfvars.example terraform.tfvars  # project_id などを設定
-terraform init && terraform apply
+# 最後に apply した state を指定して一度だけ実行する
+GO_DRIVE_ETL_LEGACY_TF_STATE_PATH=/absolute/path/to/terraform.tfstate \
+GO_DRIVE_ETL_LEGACY_TFVARS_PATH=/absolute/path/to/terraform.tfvars \
+./scripts/terraform migrate-local-state
+
+# 以後はどの worktree でもこのラッパー経由で実行する
+./scripts/terraform plan
+./scripts/terraform apply
 ```
+
+共有先は既定で `~/.local/state/go-drive-etl/terraform.tfstate` と
+`~/.config/go-drive-etl/terraform.tfvars`。state と設定ファイルには所有者だけが
+アクセスできる権限を設定する。`GO_DRIVE_ETL_TF_STATE_DIR`、
+`GO_DRIVE_ETL_TF_CONFIG_DIR`、`GO_DRIVE_ETL_TFVARS_PATH` で保存先を変更できる。
+`apply` 前には state の日時付きバックアップを同じ state ディレクトリへ作成する。
+移行元には、最後に apply した state を指定する。同じリソースを管理する state が
+複数ある場合は、state の更新日時と `terraform state list -state=<path>` を比較して
+正本を選ぶ。元の `terraform.tfstate` は、共有 state を使う
+`./scripts/terraform plan` が既存リソースを `create` / `destroy` と表示しないことを
+確認するまで削除しない。既存設定との差分が表示された場合も、state の紛失による
+差分と実際の構成変更を区別して確認する。
 
 BigQuery のデータセット / テーブルに加え、Firestore データベース（`(default)`）と Firestore API の有効化が適用される。
 

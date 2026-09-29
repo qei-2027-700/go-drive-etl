@@ -57,20 +57,35 @@ OAuth2 トークンの取得方法は `cmd/auth/` を参照。
 
 BQ データセット・テーブルの作成・変更は Terraform で管理する。
 
+初回だけ、最後に `apply` した state を指定して次を実行する。
+
 ```bash
-cd iac
-
-# 初回のみ
-terraform init
-
-# 変更内容の確認
-terraform plan
-
-# 適用
-terraform apply
+GO_DRIVE_ETL_LEGACY_TF_STATE_PATH=/absolute/path/to/terraform.tfstate \
+GO_DRIVE_ETL_LEGACY_TFVARS_PATH=/absolute/path/to/terraform.tfvars \
+  ./scripts/terraform migrate-local-state
 ```
 
-`iac/terraform.tfvars` に実際の値を設定する（git 管理外）。`iac/terraform.tfvars.example` を参考に作成すること。
+以後、Terraform を直接実行せず、全 worktree で共通のローカル state を使う
+ラッパーを実行する。
+
+```bash
+# 初期化状態の確認
+./scripts/terraform init
+
+# 変更内容の確認
+./scripts/terraform plan
+
+# 適用
+./scripts/terraform apply
+```
+
+既定の共有先は `~/.local/state/go-drive-etl/terraform.tfstate` と
+`~/.config/go-drive-etl/terraform.tfvars`。state 未移行時はラッパーが失敗するため、
+worktree が空の state で既存リソースを作成しようとすることを防げる。
+保存先を変える場合は `GO_DRIVE_ETL_TF_STATE_DIR`、
+`GO_DRIVE_ETL_TF_CONFIG_DIR`、`GO_DRIVE_ETL_TFVARS_PATH` を設定する。
+`plan` では既存リソースが `create` / `destroy` と表示されないことを確認する。設定を
+変更した場合の `update` は、state の欠落とは別にレビューする。
 
 ## 状態管理 DB
 
