@@ -21,9 +21,8 @@ resource "google_firestore_database" "default" {
   # apply してから destroy する必要がある。
   delete_protection_state = "DELETE_PROTECTION_ENABLED"
 
-  # Terraform の管理から外すときにデータベース自体も削除する。
-  # 状態管理のデータは Drive から再構築できるため、残す価値が無い。
-  deletion_policy = "DELETE"
+  # Terraform の管理から外しても、状態データを消さずに残す。
+  deletion_policy = "ABANDON"
 
   depends_on = [google_project_service.firestore]
 }

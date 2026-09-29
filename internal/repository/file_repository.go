@@ -32,7 +32,10 @@ func (r *FileRepository) Upsert(ctx context.Context, f *domain.File) error {
 				mime_type   = EXCLUDED.mime_type,
 				sync_status = 'pending',
 				updated_at  = NOW()
-		WHERE files.checksum = '' OR EXCLUDED.checksum = '' OR files.checksum <> EXCLUDED.checksum
+		WHERE files.checksum = ''
+			OR EXCLUDED.checksum = ''
+			OR files.checksum <> EXCLUDED.checksum
+			OR files.sync_status = 'failed'
 		`, f.DriveFileID, f.Path, f.Checksum, f.MimeType)
 
 	return err

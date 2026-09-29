@@ -3,3 +3,9 @@ dataset_id = "etl_raw"
 location   = "asia-northeast1"
 silver_dataset_id     = "etl_silver"
 gold_dataset_id       = "etl_gold"
+
+# Service-account credentials in Data Portal (formerly Looker Studio) require a Google Workspace or
+# Cloud Identity managed organization. Leave both values empty when using a
+# personal Google account and create the report with owner's credentials.
+# looker_studio_service_agent_member = "serviceAccount:service-org-YOUR_ORG_ID@gcp-sa-datastudio.iam.gserviceaccount.com"
+# looker_studio_data_source_editor_members = ["group:bi-admins@example.com"]

@@ -159,6 +159,31 @@ func TestPostgres_UpsertUnchangedPreservesStatus(t *testing.T) {
 	}
 }
 
+// 同じ内容でも failed のファイルは次回の Drive 検出で再試行対象に戻すこと。
+func TestPostgres_UpsertUnchangedFailedResetsToPending(t *testing.T) {
+	repo := newTestPostgresRepo(t)
+	ctx := context.Background()
+
+	f := testFile()
+	if err := repo.Upsert(ctx, f); err != nil {
+		t.Fatalf("Upsert(1回目): %v", err)
+	}
+	if err := repo.UpdateStatus(ctx, f.DriveFileID, domain.SyncStatusFailed); err != nil {
+		t.Fatalf("UpdateStatus(failed): %v", err)
+	}
+	if err := repo.Upsert(ctx, f); err != nil {
+		t.Fatalf("Upsert(2回目): %v", err)
+	}
+
+	got, err := repo.ListPending(ctx)
+	if err != nil {
+		t.Fatalf("ListPending: %v", err)
+	}
+	if len(got) != 1 || got[0].DriveFileID != f.DriveFileID {
+		t.Fatalf("同じ checksum の failed ファイルが pending に戻らない: %+v", got)
+	}
+}
+
 // checksum が変わったファイルは pending に戻り、メタデータを更新すること。
 func TestPostgres_UpsertChangedChecksumResetsToPending(t *testing.T) {
 	repo := newTestPostgresRepo(t)

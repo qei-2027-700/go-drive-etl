@@ -9,7 +9,7 @@ resource "google_bigquery_dataset" "etl" {
 resource "google_bigquery_table" "drive_files" {
   dataset_id          = google_bigquery_dataset.etl.dataset_id
   table_id            = "drive_files"
-  deletion_protection = false
+  deletion_protection = true
 
   schema = jsonencode([
     {
@@ -48,7 +48,7 @@ resource "google_bigquery_table" "drive_files" {
 resource "google_bigquery_table" "chunks" {
   dataset_id          = google_bigquery_dataset.etl.dataset_id
   table_id            = "chunks"
-  deletion_protection = false
+  deletion_protection = true
 
   schema = jsonencode([
     {
@@ -95,7 +95,7 @@ resource "google_bigquery_table" "chunks" {
 resource "google_bigquery_table" "chunks_current" {
   dataset_id          = google_bigquery_dataset.etl.dataset_id
   table_id            = "chunks_current"
-  deletion_protection = false
+  deletion_protection = true
 
   view {
     query          = <<-SQL

@@ -9,7 +9,7 @@
 | —        | Google Drive                                       | 外部データソース      | 現場がファイルをアップロードする最上流。入口であり、出口でもある。                                                                |
 | Bronze   | Cloud Storage (GCS) / BigQuery (Raw データセット)  | Raw Data Lake         | 取得した生ファイル、または未加工のデータをそのまま永続化する層。                                                                  |
 | Silver   | BigQuery (Component / Warehouse 層)                | Trusted Layer         | Protocol Buffers でスキーマ定義された型安全な構造。SQL View を用いて共通ビジネスロジックをカプセル化（コンポーネント化）。        |
-| Gold     | BigQuery (Mart 層)                                 | Analytics-ready DWH   | 可視化（データポータル（旧称: Looker Studio））や Google Drive への CSV レポート自動デリバリー用に最適化された最終集計層。        |
+| Gold     | BigQuery (Mart 層)                                 | Analytics-ready DWH   | 可視化（データポータル、旧称: Looker Studio）や Google Drive への CSV レポート自動デリバリー用に最適化された最終集計層。                                |
 | Metadata | Firestore                                          | 状態管理 DB           | ファイルの処理ステータスと checksum という「ステート（状態）」のみを管理。データの実体は保持しない。`STATE_BACKEND` で PostgreSQL 実装に切り替えられる。ジョブのリトライ管理（`jobs`）とチャンク（`chunks`）は PostgreSQL 側にのみ定義があり、Firestore へは移していない。 |
 
 ---
@@ -124,9 +124,9 @@ OS シグナル（`Ctrl+C` / `SIGTERM`）を検知すると、`context` がキ�
 | BigQuery dataset | `etl_raw`（Bronze 層）。課金未設定のためテーブル・パーティションに 60 日の有効期限を設定 |
 | BigQuery table | `etl_raw.drive_files`（スキーマ定義） |
 | BigQuery dataset / View | `etl_silver.silver_chunks`。`etl_raw.chunks_current` を入力に、分析で共通利用する派生列を提供 |
-| BigQuery dataset / Mart | `etl_gold.mart_ingestion_daily` / `mart_file_latest`。データポータル（旧称: Looker Studio）と CSV 出力が参照する物理テーブル |
+| BigQuery dataset / Mart | `etl_gold.mart_ingestion_daily` / `mart_file_latest`。データポータルと CSV 出力が参照する物理テーブル |
 | 手動 Gold 更新 SQL | `sql/refresh_gold_marts.sql`。ETL 後または BI / CSV 確認前に `CREATE OR REPLACE TABLE` で全件再計算 |
-| （将来）IAM | BI ツール / Worker 用サービスアカウント + 最小権限ロール付与 |
+| IAM | データポータル用サービスアカウント。Gold dataset の `dataViewer` と、クエリ実行用の project-level `jobUser` のみを付与 |
 | （将来）GCS bucket | 生ファイルの保管用 Bronze 層 |
 
 ### ディレクトリ構成
@@ -155,7 +155,7 @@ flowchart LR
   current --> silver["etl_silver.silver_chunks\nView"]
   silver -->|"手動 SQL 実行"| daily["etl_gold.mart_ingestion_daily"]
   silver -->|"手動 SQL 実行"| latest["etl_gold.mart_file_latest"]
-  daily --> looker["データポータル（旧称: Looker Studio）"]
+  daily --> looker["データポータル"]
   daily --> export["CSV export"]
   latest --> looker
   latest --> export
@@ -164,7 +164,7 @@ flowchart LR
 - Bronze は append-only の `chunks` と、最新コンテンツ版を公開する `chunks_current` で構成する。
 - Silver は `chunks_current` だけを入力とする View であり、`ingested_date`（Asia/Tokyo）、`content_length`、`is_embedded` を一貫して提供する。RAG は `chunks_current`、BI とレポートは Gold Mart を参照する。
 - Gold は `mart_ingestion_daily`（日別のユニークファイル数・チャンク数・文字数・embedding 状態）と `mart_file_latest`（ファイルごとの最新サマリ）を物理テーブルとして提供する。ETL 後または BI / CSV 確認前に `BQ_PROJECT_ID=<project-id> ./scripts/refresh_gold_marts.sh` を実行し、両テーブルを全件再計算する。SQL は `sql/refresh_gold_marts.sql` でバージョン管理し、`CREATE OR REPLACE TABLE` により `WRITE_TRUNCATE` 相当で更新する。Worker に `DRIVE_EXPORT_FOLDER_ID`（`/export-reports/` のフォルダ ID）を設定すると、`BIGQUERY_GOLD_DATASET_ID`（既定: `etl_gold`）の両 Mart を CSV 化して同名ファイルを更新するため、再実行してもレポートは重複しない。
-- Bronze の 60 日 TTL は `etl_raw` のみに適用する。Silver / Gold の保持期間は用途に応じて明示的に管理し、Bronze の既定 TTL を継承しない。
+- BigQuery Sandbox では全 dataset の table expiration が最大 60 日に制限されるため、Bronze / Silver / Gold とも 60 日 TTL を明示する。課金を有効化したら、Silver / Gold の保持期間を用途に応じて見直す。
 - 現 Worker は `drive_files` を BigQuery にロードしていないため、初期 Mart は `chunks_current` から得られる指標に限定する。ファイル名・MIME type 別の分析が必要になった時点で `drive_files` のロードを追加する。
 
 ---
@@ -235,11 +235,11 @@ BigQuery Raw 層（Bronze）
 BigQuery Silver 層
     ↓ 集計クエリ
 BigQuery Mart 層（Gold）
-    ├─▶ データポータル（旧称: Looker Studio、BigQuery ネイティブコネクタでダッシュボード）
+    ├─▶ データポータル（BigQuery ネイティブコネクタでダッシュボード）
     └─▶ Go Worker → CSV 化 → Google Drive /export-reports/
 ```
 
-**BI ツールにデータポータル（旧称: Looker Studio）を選ぶ理由**
+**BI ツールにデータポータルを選ぶ理由**
 
 - BigQuery のネイティブコネクタで接続でき、追加のサーバー運用が発生しない（Redash はセルフホスト前提で、本体 + PostgreSQL + Redis + ワーカーの運用が必要になる）
 - Drive / BigQuery / IAM と同じ Google エコシステム内で認証・権限を統一できる
@@ -248,7 +248,7 @@ BigQuery Mart 層（Gold）
 ダッシュボード定義は IaC 管理の対象外になるため、SQL ロジックは BigQuery の View 側に寄せて可視化層から独立させる。
 
 **Phase 3 の完了条件**
-- [ ] Silver 層の SQL View と Gold 層の Mart テーブルを設計・作成
-- [ ] BI 接続用サービスアカウントを最小権限で Terraform 管理
-- [ ] データポータル（旧称: Looker Studio）から Gold 層をクエリし、ダッシュボード 1 枚完成（README にスクリーンショット掲載）
+- [x] Silver 層の SQL View と Gold 層の Mart テーブルを設計・作成
+- [x] BI 接続用サービスアカウントを最小権限で Terraform 管理
+- [x] データポータルから Gold 層をクエリし、ダッシュボード 1 枚完成（README にスクリーンショット掲載）
 - [ ] Gold 層の集計結果を CSV 化し Drive `/export-reports/` へ自動デリバリー
