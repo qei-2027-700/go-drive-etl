@@ -158,7 +158,7 @@ BigQuery のデータセットとテーブルは Terraform で定義し、手作
 | スキーマ管理 | Protocol Buffers |
 | データソース | Google Drive API v3（サービスアカウント / ADC） |
 | DWH | BigQuery |
-| BI / 可視化 | データポータル（旧称: Looker Studio、Phase 3 で導入予定） |
+| BI / 可視化 | データポータル（旧称: Looker Studio、BigQuery Gold Mart 接続済み） |
 | 状態管理 DB | Firestore（既定）/ PostgreSQL 16 (Docker) |
 | IaC | Terraform (Google Provider ~> 6.0) |
 | テスト | `go test` / `mockgen` |
@@ -258,6 +258,8 @@ terraform init && terraform apply
 
 BigQuery のデータセット / テーブルに加え、Firestore データベース（`(default)`）と Firestore API の有効化が適用される。
 
+データポータル（旧称: Looker Studio）用の読み取り専用サービスアカウントと、その Gold dataset に限定した IAM も Terraform で作成する。組織固有のデータポータル service agent と、データソースの編集を許可する principal を `terraform.tfvars` に設定する手順は [データポータル dashboard](docs/looker-studio.md) を参照。
+
 ### 5. Gold Mart の手動更新
 
 Gold Mart は BigQuery Data Transfer Service を必要とする Scheduled Query を使わない。ETL を実行した後、およびデータポータル（旧称: Looker Studio）や CSV 出力で最新値を確認する前に、次を実行する。
@@ -276,7 +278,7 @@ BQ_PROJECT_ID=your-gcp-project-id \
   ./scripts/refresh_gold_marts.sh
 ```
 
-`BQ_SILVER_DATASET_ID`、`BQ_GOLD_DATASET_ID`、`BQ_LOCATION` の既定値はそれぞれ `etl_silver`、`etl_gold`、`asia-northeast1` である。このコマンドは、`sql/refresh_gold_marts.sql` にある 2 つの `CREATE OR REPLACE TABLE` を実行する。各 Mart はクエリ成功後に全件置換されるため、以前の `WRITE_TRUNCATE` Scheduled Query と同じ更新結果になる。BigQuery Sandbox でも Billing 設定や Data Transfer API は不要である。
+`BQ_SILVER_DATASET_ID`、`BQ_GOLD_DATASET_ID`、`BQ_LOCATION` の既定値はそれぞれ `etl_silver`、`etl_gold`、`asia-northeast1` である。このコマンドは、`sql/refresh_gold_marts.sql` にある 2 つの `CREATE OR REPLACE TABLE` を実行する。各 Mart はクエリ成功後に全件置換されるため、以前の `WRITE_TRUNCATE` Scheduled Query と同じ更新結果になる。BigQuery Sandbox でも Billing 設定や Data Transfer API は不要である。Sandbox では全 dataset の table expiration が最大 60 日に制限されるため、Gold Mart も更新時点から最大 60 日で期限切れになる。継続保持が必要になったら、課金を有効化して明示的な保持期間へ切り替える。
 
 ---
 
@@ -321,7 +323,11 @@ POSTGRES_TEST_DSN=postgres://app:password@localhost:5432/app_db?sslmode=disable 
   go test ./internal/repository/
 ```
 
-> データポータル（旧称: Looker Studio）のダッシュボードと RAG Agent CLI の実行例は、該当フェーズの実装完了後に追記する。
+> データポータル（旧称: Looker Studio）の接続手順・IAM 設計・ダッシュボード仕様は [docs/looker-studio.md](docs/looker-studio.md) に記載している。`Ingestion health` レポートは BigQuery Gold Mart へ接続済みで、ファイル数・未埋め込みチャンク数・日次推移・最新ファイル一覧を表示する。
+
+### Ingestion health dashboard
+
+![Ingestion health dashboard](docs/images/ingestion-health-dashboard.png)
 
 ---
 
@@ -360,7 +366,8 @@ go-drive-etl/
 | Google Drive クライアント | ✅ |
 | Worker Pool（並行処理） | ✅ |
 | BigQuery クライアント | ✅ |
-| Terraform（BigQuery / Firestore） | ✅ |
+| Terraform（BigQuery / Firestore / データポータル IAM） | ✅ |
+| データポータル `Ingestion health` ダッシュボード | ✅ |
 | CI / セキュリティ監視 | ✅ |
 | ファイルパーサー（チャンク化） | 🚧 |
 | ETL パイプライン統合（`cmd/worker`） | 🚧 |
@@ -388,3 +395,4 @@ go-drive-etl/
 | [docs/local-development.md](docs/local-development.md) | ローカル開発環境 |
 | [docs/security.md](docs/security.md) | セキュリティ方針 |
 | [docs/progress.md](docs/progress.md) | フェーズ別の進捗 |
+| [docs/looker-studio.md](docs/looker-studio.md) | データポータルの接続・IAM・ダッシュボード仕様 |

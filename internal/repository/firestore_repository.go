@@ -55,7 +55,9 @@ func (r *FirestoreFileRepository) Upsert(ctx context.Context, f *domain.File) er
 		if err := doc.DataTo(&existing); err != nil {
 			return err
 		}
-		if f.Checksum != "" && existing.Checksum == f.Checksum {
+		// A failed file must be retried on the next discovery, even if Drive's
+		// checksum is unchanged. Successfully processed files stay untouched.
+		if f.Checksum != "" && existing.Checksum == f.Checksum && existing.SyncStatus != string(domain.SyncStatusFailed) {
 			return nil
 		}
 		return tx.Set(docRef, newFileDoc(f))

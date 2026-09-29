@@ -26,3 +26,15 @@ variable "gold_dataset_id" {
   type        = string
   default     = "etl_gold"
 }
+
+variable "looker_studio_service_agent_member" {
+  description = "Data Portal (formerly Looker Studio) service agent principal (serviceAccount:service-org-<ORG_ID>@gcp-sa-datastudio.iam.gserviceaccount.com). Empty skips its impersonation binding."
+  type        = string
+  default     = ""
+}
+
+variable "looker_studio_data_source_editor_members" {
+  description = "Principals allowed to select the BI service account in Data Portal (for example, group:bi-admins@example.com)."
+  type        = set(string)
+  default     = []
+}
