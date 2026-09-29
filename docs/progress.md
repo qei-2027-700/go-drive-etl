@@ -1,155 +1,71 @@
 # 進捗管理
 
 > GCP プロジェクト: **`go-drive-etl`**
-> 最終更新: **2026-09-02（実装状況と全面的に再同期）**
->
-> ⚠️ **このファイルは 2026-05-30 以降更新されておらず、実装が進んだのに「未着手」のままの項目が多数あった。**
-> ソースコードを確認して実態に合わせた。**次回以降、PRマージ時にこのファイルも更新すること。**
+> 最終更新: **2026-09-30**
 
----
+## 現在地
 
-## 🔴 残っている本丸
+Phase 1（AI-Ready Pipeline）と Phase 3（BI & Delivery）の実装は完了している。Google Drive からの取得、Firestore による冪等管理、Markdown のチャンク化、BigQuery へのロード、Gold Mart の CSV 配信、データポータルでの可視化までを備える。
 
-**パイプラインの各部品は揃っているが、それを起動するエントリポイントが無い。**
+現在の未完了は、RAG を完成させる Phase 2 の Issue 群だけである。依存順は **#36 → #37 → #38 → #39**（親: #23）。
 
-| # | 残タスク | なぜ重要か |
-|:---:|:---|:---|
-| **8-1** | `cmd/worker/main.go`（Issue #6・未着手） | **これが無いと「動くパイプライン」と言えない。** 部品はあるが通しで実行できない |
-| **8-2** | Drive → 状態管理DB → Proto → BQ の End-to-End 疎通 | 同上。**動くパイプラインとして成立するかはここで決まる** |
-| 2-2 | `protoc` 生成手順が `Makefile` に無い | 生成物（`internal/pb/`）はあるが**再生成が再現できない** |
-| 1-2 | `internal/parser/` 未作成 | Issue #25（ファイルパーサ・チャンク化）が未着手のため |
+| Issue | 内容 | 状態 |
+|---:|---|:---:|
+| #36 | Vertex AI Embeddings パイプライン | 未着手 |
+| #37 | BigQuery Vector Search | #36 待ち |
+| #38 | 週次振り返り RAG Agent CLI | #37 待ち |
+| #39 | Recall / Faithfulness 評価 | #38 待ち |
+
+> Vertex AI を実際に呼び出す #36 と #38 は課金対象になり得る。設計・インターフェース・モックテストを先に実装し、クラウド実行確認は後回しにできる。
 
 ---
 
 ## フェーズ別ステータス
 
-### Phase 1: プロジェクト基盤
+### Phase 1: AI-Ready Pipeline
 
-| # | タスク | 状態 |
-|:---:|:---|:---:|
-| 1-1 | Go モジュール初期化 (`go mod init`) | ✅ |
-| 1-2 | ディレクトリ構成作成 | 🚧 `internal/parser/` のみ未作成 |
-| 1-3 | `docker-compose.yml` (PostgreSQL) | ✅ |
+| 領域 | 状態 | 根拠 |
+|---|:---:|---|
+| プロジェクト基盤 / Protocol Buffers | ✅ | `proto/record.proto` と生成済み `internal/pb/record.pb.go` |
+| 状態管理 | ✅ | Firestore を既定、PostgreSQL を代替として選択可能（#63） |
+| Google Drive 取得 | ✅ | サービスアカウント認証、Workspace ファイルの Export 対応 |
+| ファイルパーサー / チャンク化 | ✅ | Markdown の解析・チャンク化（#25, #88） |
+| Worker Pool / graceful shutdown | ✅ | 並行処理、キャンセル、テストを実装 |
+| BigQuery ロード | ✅ | 冪等なチャンク更新、リトライ、Bronze テーブル |
+| Worker エントリーポイント | ✅ | `cmd/worker` に統合済み（#6） |
+| パイプライン結合テスト | ✅ | モックベースの E2E テスト（#46, #103） |
+| Sentry 監視 | ✅ | Slack 通知、`stage` / `environment` / `release` / `load_id` を付与（#95, #114） |
 
-> **作成済み**: `proto/` `internal/bq/` `internal/etl/` `internal/pb/` `internal/domain/` `internal/repository/` `internal/drive/` `iac/`
-> **未作成**: `internal/parser/`（Issue #25）
+### Phase 2: RAG Agent
 
----
+| 領域 | 状態 |
+|---|:---:|
+| Vertex AI Embeddings | ❌ #36 |
+| BigQuery Vector Search | ❌ #37 |
+| RAG Agent CLI | ❌ #38 |
+| RAG 評価 | ❌ #39 |
 
-### Phase 2: スキーマ定義 (Protocol Buffers)
+### Phase 3: BI & Delivery
 
-| # | タスク | 状態 |
-|:---:|:---|:---:|
-| 2-1 | `proto/record.proto` 作成 | ✅ `FileRecord` / `ChunkRecord` / `SyncStatus` を定義 |
-| 2-2 | `protoc` コンパイル環境構築 | 🚧 **生成物はあるが `Makefile` に生成ターゲットが無い**（`mock` のみ） |
-| 2-3 | `internal/pb/` にコード生成 | ✅ `record.pb.go` |
-
-> ℹ️ **`service` 定義は無い＝gRPCは使っていない。** スキーマ定義としてのみ protobuf を採用している。
-
----
-
-### Phase 3: DB マイグレーション
-
-> 以下は PostgreSQL で実装した当時の記録。#63 で状態管理を Firestore に移行し、
-> PostgreSQL は `STATE_BACKEND=postgres` で選べる代替実装として残している。
-
-| # | タスク | 状態 |
-|:---:|:---|:---:|
-| 3-1 | `migrations/001_init.sql` 作成 | ✅ |
-| 3-2 | Postgres 起動 & マイグレーション適用 | ✅ ローカルで疎通確認済み |
+| 領域 | 状態 | 根拠 |
+|---|:---:|---|
+| Silver / Gold レイヤー | ✅ | BigQuery View / Mart（#40） |
+| Gold CSV の Drive 配信 | ✅ | `export-reports` への出力（#42） |
+| データポータル | ✅ | `Ingestion health` ダッシュボード（#41, #112） |
 
 ---
 
-### Phase 4: Repository (状態管理)
+## 運用・開発基盤
 
-| # | タスク | 状態 |
-|:---:|:---|:---:|
-| 4-1 | `internal/domain/file.go` 型定義 | ✅ |
-| 4-2 | `FileRepository.Upsert` | ✅ |
-| 4-3 | `FileRepository.ListPending` | ✅ **バグ解消済み**（`rows.Scan` の重複指定は解消） |
-| 4-4 | `SyncStatus` 定数の有効化 | ✅ `domain` パッケージに定数化済み |
-| 4-5 | `UpdateStatus` メソッド実装 | ✅ |
-| 4-6 | Firestore 実装（`firestore_repository.go`）| ✅ #63 |
-| 4-7 | `STATE_BACKEND` による実装切り替え（`factory.go`）| ✅ #63 |
-| 4-8 | Firestore エミュレータに対するテスト | ✅ #63 |
+| 領域 | 状態 | 補足 |
+|---|:---:|---|
+| Terraform | ✅ | BigQuery / Firestore / データポータル IAM。worktree 間で state を安全に共有（#113） |
+| CI / セキュリティ | ✅ | CI、OpenSSF Scorecard、Dependabot、依存脆弱性対応 |
+| ユニットテスト | ✅ | Drive、Repository、BigQuery、ETL、Parser をカバー |
+| Protobuf 再生成 | 🚧 | 生成物はあるが、`Makefile` に `protoc` ターゲットは未追加 |
 
-> #63 で状態管理を Firestore へ移行した。既定は Firestore で、`STATE_BACKEND=postgres` を
-> 設定すると上記 4-1〜4-5 の PostgreSQL 実装に切り替わる。両実装とも `FileRepo` を満たす。
+## 次の判断
 
----
+ポートフォリオを現在の ETL / BI スコープで区切るなら、現時点でもデモ可能である。RAG まで含めた完成版は #23 を親として Phase 2 の 4 Issue を完了させる。
 
-### Phase 5: Google Drive クライアント
-
-| # | タスク | 状態 |
-|:---:|:---|:---:|
-| 5-1 | GCP: Drive API 有効化 | ✅ |
-| 5-2 | GCP: OAuth 同意画面 構成 | ✅ |
-| 5-3 | GCP: OAuth 2.0 クライアント ID 作成 (`go-drive-etl-key`) | ✅ |
-| 5-4 | `cmd/auth/main.go` でリフレッシュトークン取得 | ✅ 実装済み |
-| 5-5 | `.env` に認証情報設定 | ✅ ローカルに `.env` あり（`.env.example` も整備済み） |
-| 5-6 | `internal/drive/client.go` 本実装 | ✅ `NewClient` / `ListFiles` / `DownloadFile` |
-
----
-
-### Phase 6: Worker Pool (Go Concurrency)
-
-| # | タスク | 状態 |
-|:---:|:---|:---:|
-| 6-1 | `internal/etl/worker_pool.go` 作成 | ✅ `Run` 実装済み |
-| 6-2 | `ctx.Done()` 監視 / Graceful Shutdown | ✅ `sync.WaitGroup` ＋ `ctx.Done()` の select で実装 |
-
----
-
-### Phase 7: BigQuery クライアント
-
-| # | タスク | 状態 |
-|:---:|:---|:---:|
-| 7-1 | GCP: BigQuery API 有効化 | ✅ |
-| 7-2 | GCP: BigQuery データセット作成 | 🚧 **Terraform で定義済み**（`iac/bigquery.tf`）。`apply` 済みかは要確認 |
-| 7-3 | `go get cloud.google.com/go/bigquery` | ✅ `v1.81.0` |
-| 7-4 | `internal/bq/client.go` 作成 | ✅ `NewClient` / `InsertRows` / `Close` |
-
----
-
-### Phase 8: ETL パイプライン統合 🔴 **ここが未達**
-
-| # | タスク | 状態 |
-|:---:|:---|:---:|
-| 8-1 | `cmd/worker/main.go` 作成 | ❌ Issue #6（**Issue #63 の Firestore 移行完了後に着手**） |
-| 8-2 | Drive → 状態管理DB → Proto → BQ の End-to-End 疎通 | ❌ |
-| 8-3 | Graceful Shutdown テスト | ❌ |
-
----
-
-### IaC (Terraform)
-
-| # | タスク | 状態 |
-|:---:|:---|:---:|
-| T-1 | `iac/main.tf` 作成 | ✅ |
-| T-2 | `iac/bigquery.tf`（データセット / テーブル定義） | ✅ |
-| T-3 | `iac/variables.tf` / `terraform.tfvars.example` | ✅ |
-
----
-
-### 品質・セキュリティ（progress.md に項目が無かったので追加）
-
-| # | タスク | 状態 |
-|:---:|:---|:---:|
-| Q-1 | ユニットテスト | 🚧 `internal/bq` / `internal/etl` のみ。`repository` / `drive` は未 |
-| Q-2 | インターフェース＋モック生成（`make mock`） | ✅ 4パッケージ分を `mockgen` で生成 |
-| Q-3 | CI（`.github/workflows/ci.yml`） | ✅ |
-| Q-4 | OpenSSF Scorecard（`scorecard.yml`） | ✅ |
-| Q-5 | Dependabot（`.github/dependabot.yml`） | ✅ |
-| Q-6 | E2E 結合テスト（モックベース） | ❌ Issue #46 |
-
----
-
-## 凡例
-
-| 記号 | 意味 |
-|:---:|:---|
-| ✅ | 完了 |
-| 🚧 | 着手済み・一部未完了 |
-| ❌ | 未着手 |
-| ❓ | 要確認 |
-| 🐛 | バグあり |
+Cloud Run / Cloud Scheduler による定期実行は将来構成であり、現行スコープの必須要件ではない。必要になった時点で別 Issue として起票する。

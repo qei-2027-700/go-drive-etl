@@ -17,7 +17,7 @@ Google Drive に置かれた業務ファイルを自動回収し、スキーマ�
 | 何を解くのか | 非エンジニアが Drive に置く雑多なファイル（MD / CSV / JSON / PDF）を、人手を介さず分析可能な形へ落とし込む |
 | なぜ Drive なのか | 現場との実運用インターフェースであり、「混沌とした外部ストレージからの回収」という実務課題をそのまま再現できる |
 | 中心にある技術 | goroutine ベースの Worker Pool、Protocol Buffers によるスキーマ定義、Firestore による冪等性の担保 |
-| どこまで動くか | Drive → 状態管理 DB → BigQuery の疎通は動作確認済み。通し実行のエントリポイント `cmd/worker` は実装中 |
+| どこまで動くか | Drive → Firestore による冪等管理 → Markdown チャンク化 → BigQuery の通し実行を実装済み。Gold Mart の CSV 配信とデータポータルでの可視化にも対応 |
 
 ---
 
@@ -364,13 +364,13 @@ go-drive-etl/
 ├── cmd/
 │   ├── auth/           # OAuth2 リフレッシュトークン取得ツール（フォールバック用、通常は未使用）
 │   ├── verify_drive/   # Drive → 状態管理 DB → BigQuery 疎通確認ツール
-│   └── worker/         # ETL パイプライン本体（実装中）
+│   └── worker/         # ETL パイプライン本体
 ├── internal/
 │   ├── bq/             # BigQuery クライアント
 │   ├── domain/         # ドメイン型定義
 │   ├── drive/          # Google Drive クライアント
 │   ├── etl/            # Worker Pool
-│   ├── parser/         # ファイルパーサー（実装中）
+│   ├── parser/         # Markdown ファイルパーサー / チャンク化
 │   ├── pb/             # Protocol Buffers 生成コード
 │   └── repository/     # 状態管理リポジトリ（Firestore / PostgreSQL）
 ├── proto/              # Protocol Buffers 定義
@@ -395,8 +395,8 @@ go-drive-etl/
 | Terraform（BigQuery / Firestore / データポータル IAM） | ✅ |
 | データポータル `Ingestion health` ダッシュボード | ✅ |
 | CI / セキュリティ監視 | ✅ |
-| ファイルパーサー（チャンク化） | 🚧 |
-| ETL パイプライン統合（`cmd/worker`） | 🚧 |
+| ファイルパーサー（Markdown チャンク化） | ✅ |
+| ETL パイプライン統合（`cmd/worker`） | ✅ |
 
 進捗の内訳は [docs/progress.md](docs/progress.md) を参照。
 
