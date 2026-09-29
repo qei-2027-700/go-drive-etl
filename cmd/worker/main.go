@@ -22,22 +22,25 @@ import (
 
 func main() {
 	_ = godotenv.Load()
-	if err := sentry.Init(sentryOptions()); err != nil {
+	metadata := newRunMetadata()
+	if err := sentry.Init(sentryOptions(metadata)); err != nil {
 		log.Fatalf("Sentry の初期化に失敗: %v", err)
 	}
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			captureFailure(recoveredPanicError(recovered), metadata)
+			sentry.Flush(2 * time.Second)
+			panic(recovered)
+		}
+	}()
 
 	if err := run(); err != nil {
-		sentry.CaptureException(err)
+		captureFailure(err, metadata)
 		sentry.Flush(2 * time.Second)
-		log.Fatal(err)
+		log.Print(err)
+		os.Exit(1)
 	}
-}
-
-func sentryOptions() sentry.ClientOptions {
-	return sentry.ClientOptions{
-		Dsn:         os.Getenv("SENTRY_DSN"),
-		Environment: os.Getenv("SENTRY_ENVIRONMENT"),
-	}
+	sentry.Flush(2 * time.Second)
 }
 
 func run() error {
@@ -48,18 +51,18 @@ func run() error {
 
 	driveClient, err := drive.NewClient(ctx)
 	if err != nil {
-		return fmt.Errorf("Drive クライアントの初期化に失敗: %w", err)
+		return withStage("startup", fmt.Errorf("Drive クライアントの初期化に失敗: %w", err))
 	}
 
 	repo, closeRepo, err := repository.New(ctx)
 	if err != nil {
-		return fmt.Errorf("リポジトリの初期化に失敗: %w", err)
+		return withStage("startup", fmt.Errorf("リポジトリの初期化に失敗: %w", err))
 	}
 	defer closeRepo()
 
 	bq, err := bqclient.NewClient(ctx)
 	if err != nil {
-		return fmt.Errorf("BigQuery クライアントの初期化に失敗: %w", err)
+		return withStage("startup", fmt.Errorf("BigQuery クライアントの初期化に失敗: %w", err))
 	}
 	defer bq.Close()
 
@@ -89,7 +92,7 @@ func runPipeline(
 ) error {
 	files, err := driveClient.ListFiles(ctx, folderID)
 	if err != nil {
-		return fmt.Errorf("Drive ファイル一覧の取得に失敗: %w", err)
+		return withStage("download", fmt.Errorf("Drive ファイル一覧の取得に失敗: %w", err))
 	}
 
 	for _, file := range files {
@@ -107,7 +110,7 @@ func runPipeline(
 
 	log.Printf("Drive ファイルを %d 件検出しました。Worker Pool を開始します。", len(files))
 	if err := etl.Run(ctx, repo, driveClient, bq); err != nil {
-		return fmt.Errorf("Worker Pool の実行に失敗: %w", err)
+		return withStage("load", fmt.Errorf("Worker Pool の実行に失敗: %w", err))
 	}
 	return exportGoldReports(ctx, driveClient, bq, exportFolderID)
 }
@@ -120,11 +123,11 @@ func exportGoldReports(ctx context.Context, driveClient drive.DriveClient, bq bq
 	for _, table := range []string{"mart_ingestion_daily", "mart_file_latest"} {
 		contents, err := bq.ExportTableCSV(ctx, table)
 		if err != nil {
-			return fmt.Errorf("Gold Mart の CSV 抽出に失敗: table=%s: %w", table, err)
+			return withStage("load", fmt.Errorf("Gold Mart の CSV 抽出に失敗: table=%s: %w", table, err))
 		}
 		name := table + ".csv"
 		if err := driveClient.UpsertFile(ctx, exportFolderID, name, "text/csv", contents); err != nil {
-			return fmt.Errorf("Gold Mart CSV の Drive 出力に失敗: file=%s: %w", name, err)
+			return withStage("load", fmt.Errorf("Gold Mart CSV の Drive 出力に失敗: file=%s: %w", name, err))
 		}
 	}
 	return nil
