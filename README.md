@@ -47,7 +47,7 @@ flowchart LR
     end
 
     subgraph CONS["活用"]
-        LOOKER["Looker Studio<br/>ダッシュボード"]
+        LOOKER["データポータル<br/>（旧称: Looker Studio）"]
         RAG["RAG Agent CLI<br/>Vertex AI Embeddings"]
     end
 
@@ -158,7 +158,7 @@ BigQuery のデータセットとテーブルは Terraform で定義し、手作
 | スキーマ管理 | Protocol Buffers |
 | データソース | Google Drive API v3（サービスアカウント / ADC） |
 | DWH | BigQuery |
-| BI / 可視化 | Looker Studio（Phase 3 で導入予定） |
+| BI / 可視化 | データポータル（旧称: Looker Studio、Phase 3 で導入予定） |
 | 状態管理 DB | Firestore（既定）/ PostgreSQL 16 (Docker) |
 | IaC | Terraform (Google Provider ~> 6.0) |
 | テスト | `go test` / `mockgen` |
@@ -260,7 +260,7 @@ BigQuery のデータセット / テーブルに加え、Firestore データベ�
 
 ### 5. Gold Mart の手動更新
 
-Gold Mart は BigQuery Data Transfer Service を必要とする Scheduled Query を使わない。ETL を実行した後、および Looker Studio や CSV 出力で最新値を確認する前に、次を実行する。
+Gold Mart は BigQuery Data Transfer Service を必要とする Scheduled Query を使わない。ETL を実行した後、およびデータポータル（旧称: Looker Studio）や CSV 出力で最新値を確認する前に、次を実行する。
 
 ```bash
 BQ_PROJECT_ID=your-gcp-project-id ./scripts/refresh_gold_marts.sh
@@ -321,7 +321,7 @@ POSTGRES_TEST_DSN=postgres://app:password@localhost:5432/app_db?sslmode=disable 
   go test ./internal/repository/
 ```
 
-> Looker Studio ダッシュボードと RAG Agent CLI の実行例は、該当フェーズの実装完了後に追記する。
+> データポータル（旧称: Looker Studio）のダッシュボードと RAG Agent CLI の実行例は、該当フェーズの実装完了後に追記する。
 
 ---
 
@@ -375,7 +375,7 @@ go-drive-etl/
 |:---|:---|
 | Phase 1 | 任意のファイルを Drive から取り込み、チャンク単位で BigQuery に格納するまでを通しで動かす |
 | Phase 2 | Vertex AI Embeddings と BigQuery Vector Search を用いた RAG Agent CLI を構築し、Recall / Faithfulness を計測する |
-| Phase 3 | Gold 層を Looker Studio で可視化し、集計 CSV を Drive へ自動デリバリーする |
+| Phase 3 | Gold 層をデータポータル（旧称: Looker Studio）で可視化し、集計 CSV を Drive へ自動デリバリーする |
 
 ---
 
