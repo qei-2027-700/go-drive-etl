@@ -88,3 +88,16 @@ verifying that a non-editor viewer can load the charts without BigQuery access.
 4. Capture the resulting report page and add it to the README before publishing
    the repository. This last step requires the project's Data Portal account
    and cannot be generated from Terraform.
+
+## Demo verification (2026-10-11)
+
+The `Ingestion health` report rendered at:
+https://datastudio.google.com/u/1/reporting/4ea2ca0b-3c98-4184-93d8-e779652451e2/page/AF69F
+
+The report rendered with two files and ten pending embedding chunks before a
+new Markdown file was processed. At that time, the data matched BigQuery, whose
+latest ingestion timestamp was 2026-09-29. On 2026-10-11, the Worker processed
+the additional file; `etl_silver.silver_chunks` then contained 15 rows across
+3 files, with the new file ingested on 2026-10-11. Both Gold Marts were rebuilt
+with `scripts/refresh_gold_marts.sh`, and the Worker was run again to export
+the updated CSVs to Drive. Reload the report to verify the new date and totals.

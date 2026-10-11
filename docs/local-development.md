@@ -51,7 +51,7 @@ GOOGLE_CLIENT_SECRET=...
 GOOGLE_REFRESH_TOKEN=...
 ```
 
-OAuth2 トークンの取得方法は `cmd/auth/` を参照。
+OAuth2 トークンの取得方法は `cmd/auth/` を参照。Firestore エミュレータと認証コールバックが同じ `localhost:8080` を使うため、OAuth 認証前にエミュレータを止める手順は [README のポート競合対処](../README.md#oauth-認証と-firestore-エミュレータのポート競合) を参照。Drive の一覧取得で404が出る場合は [README の `DRIVE_FOLDER_ID` 確認手順](../README.md#drive-の404エラー-file-not-found) を参照。
 
 ## Terraform（IaC）
 

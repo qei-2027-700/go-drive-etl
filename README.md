@@ -2,7 +2,7 @@
 
 Go の並行処理 + GCP (BigQuery) + Protocol Buffers で構成した、バッチ ETL データパイプライン。
 
-Google Drive に置かれた業務ファイルを自動回収し、スキーマ検証を通して BigQuery へロードする。集計結果は Drive へ CSV レポートとして書き戻し、蓄積したテキストチャンクは RAG の検索対象として再利用する。
+Google Drive の Markdown ファイルを回収し、チャンク化して BigQuery へロードする。Gold Mart の集計結果は CSV として Drive へ書き戻し、データポータルで可視化する。RAG と定期実行は将来の拡張である。
 
 [![CI](https://github.com/qei-2027-700/go-drive-etl/actions/workflows/ci.yml/badge.svg)](https://github.com/qei-2027-700/go-drive-etl/actions/workflows/ci.yml)
 [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/qei-2027-700/go-drive-etl/badge)](https://securityscorecards.dev/viewer/?uri=github.com/qei-2027-700/go-drive-etl)
@@ -48,7 +48,7 @@ flowchart LR
 
     subgraph CONS["活用"]
         LOOKER["データポータル<br/>（旧称: Looker Studio）"]
-        RAG["RAG Agent CLI<br/>Vertex AI Embeddings"]
+        RAG["将来: RAG Agent CLI<br/>Vertex AI Embeddings"]
     end
 
     RAW --> EX --> DL --> PV --> LD
@@ -58,7 +58,7 @@ flowchart LR
     LD --> BRONZE --> SILVER --> GOLD
     GOLD --> OUT
     GOLD --> LOOKER
-    SILVER --> RAG
+    SILVER -.将来の拡張.-> RAG
 ```
 
 ### メダリオンアーキテクチャ
@@ -226,13 +226,53 @@ gcloud auth application-default login
 > **OAuth2 ユーザー委譲方式（マイドライブへ出力する場合）**
 > `.env` に `GOOGLE_CLIENT_ID` と `GOOGLE_CLIENT_SECRET` を設定し、`go run ./cmd/auth/` でリフレッシュトークンを取得する。表示された `GOOGLE_REFRESH_TOKEN` も `.env` に設定すると、Worker は OAuth を優先してあなたのマイドライブへ書き込む。OAuth 同意画面が「テスト中」の場合、リフレッシュトークンは 7 日で失効するため、長期運用では公開ステータスや Workspace の運用設定も確認する。
 
+#### OAuth 認証と Firestore エミュレータのポート競合
+
+`cmd/auth` は OAuth コールバック用サーバーとして `localhost:8080` を使う。Firestore エミュレータも `docker compose up -d firestore` で同じポートを使うため、エミュレータ起動中に `cmd/auth` を実行すると `bind: address already in use` で失敗する。URLが表示されても、認証コマンドがポート競合で終了した場合は新しいトークンを取得できていない。
+
+次の順に実行する。
+
+1. Firestore エミュレータを止める。
+
+   ```bash
+   docker compose stop firestore
+   ```
+
+2. `.env` の OAuth クライアント情報を使って認証する。ブラウザで認証を完了し、ターミナルに新しい `GOOGLE_REFRESH_TOKEN` が表示されるまでコマンドを終了しない。
+
+   ```bash
+   env -u GOOGLE_CLIENT_ID -u GOOGLE_CLIENT_SECRET -u GOOGLE_REFRESH_TOKEN go run ./cmd/auth/
+   ```
+
+3. 表示されたトークンで `.env` の `GOOGLE_REFRESH_TOKEN` を置き換え、Firestore エミュレータを再起動する。
+
+   ```bash
+   docker compose start firestore
+   ```
+
+4. Worker を実行する。
+
+   ```bash
+   env -u GOOGLE_CLIENT_ID -u GOOGLE_CLIENT_SECRET -u GOOGLE_REFRESH_TOKEN go run ./cmd/worker/
+   ```
+
+`env -u` はシェルに残った値を外し、各コマンドが `.env` を読み込むようにする。OAuth 3項目が `.env` に設定されていれば、Worker はサービスアカウントより OAuth を優先する。
+
+#### Drive の404エラー（`File not found`）
+
+OAuth認証が成功しているのにDriveの一覧取得で `404: File not found` が返る場合は、`.env` の `DRIVE_FOLDER_ID` が入力フォルダ自体のIDか確認する。Google Driveで入力フォルダを開き、URLの `/folders/` の後ろにあるIDを設定する。親フォルダや `DRIVE_EXPORT_FOLDER_ID` のIDを入力側に設定しない。OAuth認証したGoogleアカウントが、そのフォルダを開けることも確認する。
+
+2026-10-11 のデモでは、`DRIVE_FOLDER_ID` が誤っていたため404になった。入力フォルダのIDを直した後、Worker が2件を検出し、ETLパイプラインを完了した。
+
 > **Sentry エラー通知**
 > Sentry で `go-drive-etl` プロジェクトを作成し、DSN は実行環境の Secret として `SENTRY_DSN` に設定する。`SENTRY_ENVIRONMENT`（`local` / `development` / `production`）と、デプロイした commit SHA を `SENTRY_RELEASE` に設定する。Worker はジョブ全体の失敗と未処理 panic を1件のイベントとして送信し、`stage`、`environment`、`release`、`load_id` をタグに付ける。個々のファイルの失敗は大量通知を避けるため Sentry に送らず、既存の状態管理とログで確認する。終了前に最大2秒待機してイベントを送信するため、単発実行の Worker でも通知を取りこぼさない。SDK の PII 送信と breadcrumbs は無効化しており、文書本文、アクセストークン、DSN、file_id をイベントへ追加しない。
 
 > **Sentry / Slack の運用手順**
-> 1. Sentry の **Alerts → Create Alert** で「New Issue」を条件にアラートを作成し、通知先として Slack を接続する。対象 environment は `production` に絞る。
+> 1. Sentry の **Alerts → Create Alert** で「New Issue」を条件にアラートを作成し、通知先として `#sentry-etl-alert` を接続する。対象 environment は `production` に絞る。
 > 2. 本番デプロイでは `SENTRY_DSN`、`SENTRY_ENVIRONMENT=production`、`SENTRY_RELEASE=<commit SHA>` を Secret / 環境変数として設定する。DSN を `.env.example`、ソース、CIログへ記録しない。
 > 3. 検証用環境で意図的に Worker の起動失敗を発生させ、Sentry の新規 Issue と Slack 通知を確認する。イベントに `stage`、`environment`、`release`、`load_id` があり、本文や認証情報が含まれないことを確認する。
+>
+> 確認状況: 2026-09-30、Worker のテスト失敗イベントが Sentry から `#sentry-etl-alert` に届いたことを Slack で確認した。共有された Slack リンクは Sentry の Business trial 終了通知で、同通知によると Slack 連携は 2026-10-18 に停止する。
 
 ### 3. 状態管理 DB の起動
 
@@ -310,24 +350,28 @@ BQ_PROJECT_ID=your-gcp-project-id \
 
 ## デモ
 
-Drive → 状態管理 DB → BigQuery の疎通を 1 コマンドで確認できる。
+Portfolio v1 のデモでは、Drive の Markdown ファイルを Worker が取得し、Firestore で処理状態を管理しながらチャンク化して BigQuery へロードする。実行後に Gold Mart を更新し、CSV とデータポータルで結果を確認する。RAG の Embeddings や定期実行はこのデモに含まれない。
+
+1. セットアップ手順に従って `.env`、Drive の入力フォルダ、Firestore、BigQuery、認証を準備する。
+2. Worker を実行する。
 
 ```bash
-go run ./cmd/verify_drive/
+go run ./cmd/worker/
 ```
 
-```txt
-Drive 取得ファイル数: 3
+3. ログで Drive ファイルの検出と Worker Pool の完了を確認する。BigQuery の `chunks_current` に Drive ファイル由来の Markdown チャンクがあることを確認する。
+4. Gold Mart を更新する。
 
-  ✓ 状態管理DB Upsert: 2026-W35-retrospective.md
-  ✓ 状態管理DB Upsert: sales_2026q2.csv
-  ✓ 状態管理DB Upsert: meeting-notes.pdf
-  状態管理DB pending 件数: 3
-
-  ✓ BigQuery Insert: 3 件
-
---- Drive → 状態管理DB → BigQuery 疎通完了 ---
+```bash
+BQ_PROJECT_ID=your-gcp-project-id ./scripts/refresh_gold_marts.sh
 ```
+
+5. `etl_gold.mart_ingestion_daily` と `etl_gold.mart_file_latest` を BigQuery で確認する。続けて Worker をもう一度実行すると、更新後の 2 つの Mart の CSV が `DRIVE_EXPORT_FOLDER_ID` の Drive フォルダに作成・更新される。
+6. [docs/looker-studio.md](docs/looker-studio.md) の手順で `Ingestion health` ダッシュボードを開き、ファイル数・未埋め込みチャンク数・日次推移・最新ファイル一覧を確認する。
+
+`go run ./cmd/verify_drive/` は Drive → 状態管理 DB → BigQuery の基本疎通確認用であり、Markdown チャンク化や Gold Mart の更新を行う Worker デモとは異なる。
+
+確認結果: 2026-10-11 にローカルで `go test ./...` を実行し、全パッケージが成功した。Firestore エミュレータを使ったWorker実行では、`DRIVE_FOLDER_ID` の誤りによる404を修正後、Driveから3件を検出してETLパイプラインが完了した。BigQuery の `silver_chunks` は15行・3ファイルとなり、追加ファイルの `ingested_at` は2026-10-11。Gold Mart は `./scripts/refresh_gold_marts.sh` で再集計し、`mart_ingestion_daily` は2日分、合計3ファイル・15チャンク、`mart_file_latest` は3ファイルとなった。続けてWorkerを実行し、Drive の `export-reports` にCSVを再出力した。データポータルの [Ingestion health ダッシュボード](https://datastudio.google.com/u/1/reporting/4ea2ca0b-3c98-4184-93d8-e779652451e2/page/AF69F) は表示確認済み。最新集計の反映には、Gold Mart更新後にレポートを再読み込みする。
 
 テストとモックの生成は Make 経由で行う。
 
