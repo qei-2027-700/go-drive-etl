@@ -2,7 +2,7 @@ module github.com/qei-2027-700/go-drive-etl
 
 go 1.26.5
 
-toolchain go1.26.6
+toolchain go1.26.9
 
 require (
 	cloud.google.com/go/bigquery v1.82.0
@@ -51,7 +51,7 @@ require (
 	golang.org/x/crypto v0.57.0 // indirect
 	golang.org/x/exp v0.0.0-20240719175910-8a7402abbf56 // indirect
 	golang.org/x/mod v0.41.0 // indirect
-	golang.org/x/net v0.59.0 // indirect
+	golang.org/x/net v0.60.0 // indirect
 	golang.org/x/sync v0.23.0 // indirect
 	golang.org/x/sys v0.48.0 // indirect
 	golang.org/x/telemetry v0.0.0-20260811182544-a038080d80e5 // indirect
