@@ -421,4 +421,5 @@ go-drive-etl/
 | [docs/local-development.md](docs/local-development.md) | ローカル開発環境 |
 | [docs/security.md](docs/security.md) | セキュリティ方針 |
 | [docs/progress.md](docs/progress.md) | フェーズ別の進捗 |
+| [docs/reflection-rag-plan.md](docs/reflection-rag-plan.md) | 振り返り回答の検討方針、対象日付・Silver・Vertex AI の役割 |
 | [docs/looker-studio.md](docs/looker-studio.md) | データポータルの接続・IAM・ダッシュボード仕様 |
