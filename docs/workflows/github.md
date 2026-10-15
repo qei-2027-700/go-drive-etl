@@ -81,9 +81,12 @@ Blocks: #789
     ```
 
 2.  **関連 Issue の確認**  
-    クローズ対象となる Issue 番号を確認します。
+    クローズ対象となる Issue 番号と本文を確認します。
     ```bash
     gh issue list --repo qei-2027-700/go-drive-etl --state open
+    ```
+    ```bash
+    gh issue view <Issue番号> --repo qei-2027-700/go-drive-etl
     ```
 
 3.  **リモートへのプッシュ**  
@@ -93,24 +96,50 @@ Blocks: #789
     ```
 
 4.  **PR の作成**  
+    本文の先頭に `> [!IMPORTANT]` を置き、続く引用行に解決する課題と変更後の状態を1〜2文、100字程度を目安に書きます。Issue・差分で確認した内容に絞り、未確認の効果は補いません。作業の列挙は Summary、Issue リンクは Related issue に記載します。
+
+    日本語の本文は `yomiyasu` スキルで推敲し、意味・条件を保って重複や不要な前置きを省きます。本文をファイルに保存し、スキルのリンターで確認してから `--body-file` で渡します。
+
+    `.github/PULL_REQUEST_TEMPLATE.md` と同じ構成で、本文ファイルを作成します。生成元の表記は末尾に置きます。
+
+    ```markdown
+    > [!IMPORTANT]
+    > <解決する課題と変更後の状態を1〜2文、100字程度を目安に記載>
+
+    ## Related issue
+
+    Closes #<Issue番号>
+
+    ## Summary
+
+    - <変更内容を箇条書きで簡潔に記載>
+
+    ## Test plan
+
+    - [ ] <確認事項1>
+    - [ ] <確認事項2>
+
+    ## Merge checklist
+
+    - [ ] CI is green
+    - [ ] I reviewed the final diff
+    - [ ] The related Issue's acceptance criteria are satisfied
+
+    > 🤖 Created via skill `/gh-pr`
+    ```
+
+    目的の記載例：
+
+    ```markdown
+    > [!IMPORTANT]
+    > PR の目的が冒頭で伝わりづらいため、スキル・作成手順・テンプレートを統一し、課題と変更後の状態を IMPORTANT に明記します。
+    ```
+
     ```bash
     gh pr create \
       --repo qei-2027-700/go-drive-etl \
       --title "<タイトル>" \
-      --body "$(cat <<'EOF'
-    > 🤖 Created via skill `/gh-pr`
-
-    ## Summary
-    - <変更内容を箇条書きで簡潔に記載>
-
-    ## Closes
-    Closes #<Issue番号>
-
-    ## Test plan
-    - [ ] <確認事項1>
-    - [ ] <確認事項2>
-    EOF
-    )"
+      --body-file <本文ファイルのパス>
     ```
 
 ### タイトル形式 (Conventional Commits)
