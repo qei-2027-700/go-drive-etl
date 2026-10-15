@@ -40,6 +40,16 @@ gcloud config set project go-drive-etl
 
 `.env` ファイルをリポジトリルートに作成する（git 管理外）。
 
+Git worktree や Orca で作成した作業ディレクトリには、Git 管理外の `.env` は引き継がれない。main の作業ディレクトリにある `.env` を使う場合は、次を実行する。
+
+```bash
+./scripts/copy-worktree-env
+```
+
+main の場所は Git の worktree 一覧から取得する。値は画面へ表示せずコピーし、コピー先の権限を所有者だけが読み書きできる `0600` にする。既存の `.env` は上書きしない。置き換える場合のみ `--force` を付ける。このスクリプトは Worker の起動や再処理を行わない。
+
+振り返りの年月ラベルの保存形式、スキーマの適用、既存ファイルの強制再処理は [振り返りの年月ラベル](reflection-metadata.md) を参照。
+
 ```env
 # BigQuery
 BIGQUERY_PROJECT_ID=go-drive-etl

@@ -1,0 +1,66 @@
+#!/usr/bin/env python3
+"""Copy the main worktree's .env without displaying or evaluating its values."""
+
+import argparse
+import os
+from pathlib import Path
+import subprocess
+import sys
+import tempfile
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--force", action="store_true", help="replace an existing .env")
+    args = parser.parse_args()
+    target_root = Path(__file__).resolve().parent.parent
+    listing = subprocess.run(
+        ["git", "-C", str(target_root), "worktree", "list", "--porcelain", "-z"],
+        check=True, capture_output=True, text=True,
+    ).stdout
+    source_root = None
+    for record in listing.split("\0\0"):
+        fields = record.split("\0")
+        if "branch refs/heads/main" in fields:
+            source_root = Path(next(field[9:] for field in fields if field.startswith("worktree ")))
+            break
+    if source_root is None:
+        raise ValueError("No worktree has main checked out.")
+    source = source_root / ".env"
+    target = target_root / ".env"
+    if not source.is_file():
+        raise ValueError("The main worktree has no .env file.")
+    if source.resolve() == target.resolve():
+        print("This is already the main .env; nothing copied.")
+        return
+    # Check ignored status before copying credentials into the worktree.
+    ignored = subprocess.run(
+        ["git", "-C", str(target_root), "check-ignore", "-q", "--", ".env"],
+        capture_output=True,
+    )
+    if ignored.returncode != 0:
+        raise ValueError("The destination .env must be excluded from Git before copying.")
+    if os.path.lexists(target) and not args.force:
+        raise ValueError("Destination .env already exists; use --force to replace it.")
+    # The temporary file is private (0600); publish the complete copy atomically.
+    fd, temporary = tempfile.mkstemp(prefix=".worktree-env-", dir=target_root)
+    try:
+        with os.fdopen(fd, "wb") as output:
+            output.write(source.read_bytes())
+        if args.force:
+            os.replace(temporary, target)
+        else:
+            os.link(temporary, target)
+        print("Copied main .env into this worktree (permissions: 0600).")
+    finally:
+        Path(temporary).unlink(missing_ok=True)
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except (OSError, ValueError, subprocess.CalledProcessError):
+        # Do not print exception payloads that could contain credential values.
+        print("Could not copy .env. Check that main has .env, the destination is Git-ignored, "
+              "and use --force only when replacing an existing file.", file=sys.stderr)
+        sys.exit(1)
