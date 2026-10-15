@@ -10,7 +10,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
-	"strings"
 	"time"
 
 	"cloud.google.com/go/bigquery"
@@ -59,31 +58,22 @@ func run() int {
 		fmt.Println("cannot create private log directory")
 		return 1
 	}
-	r := report{Started: time.Now().UTC().Format(time.RFC3339), Status: "failed", DashboardURL: os.Getenv("GOLD_DASHBOARD_URL"), DashboardReason: "Browser rendering has not been checked. Open the report with a signed-in browser and compare the dashboard_files/dashboard_pending counts with all-date scorecards; check daily chart and latest-file table as described in docs/looker-studio.md."}
+	r := newReport(*mutate)
+	r.Started = time.Now().UTC().Format(time.RFC3339)
+	r.DashboardURL = os.Getenv("GOLD_DASHBOARD_URL")
+	r.DashboardReason = "Browser rendering has not been checked. Open the report with a signed-in browser and compare the dashboard_files/dashboard_pending counts with all-date scorecards; check daily chart and latest-file table as described in docs/looker-studio.md."
 	if r.DashboardURL == "" {
 		if data, err := os.ReadFile("docs/looker-studio.md"); err == nil {
 			r.DashboardURL = regexp.MustCompile(`https://datastudio\.google\.com/[^\s]+`).FindString(string(data))
 		}
 	}
-	finish := func(code int) int {
-		// Include unattempted stages after early failures as well as completed ones.
-		for _, name := range []string{"refresh", "Gold comparison", "CSV round 1", "CSV round 2", "dashboard"} {
-			found := false
-			for _, st := range r.Stages {
-				if strings.HasPrefix(st.Name, name) {
-					found = true
-					break
-				}
-			}
-			if !found {
-				state := "not_run"
-				if name == "dashboard" {
-					state = "unverified"
-				}
-				if name == "CSV round 2" && !*mutate {
-					state = "not_requested"
-				}
-				r.Stages = append(r.Stages, stage{Name: name, Status: state})
+	finish := func(err error) int {
+		code := 2
+		if err != nil {
+			code = 1
+			// Detailed API errors may contain identifiers or credentials: keep them private.
+			if writeErr := os.WriteFile(filepath.Join(dir, "error.txt"), []byte(err.Error()), 0600); writeErr != nil {
+				fmt.Println("cannot save private error log")
 			}
 		}
 		r.Finished = time.Now().UTC().Format(time.RFC3339)
@@ -95,20 +85,6 @@ func run() int {
 		fmt.Printf("%s\nlog: %s\n", data, filepath.Join(dir, "summary.json"))
 		return code
 	}
-	fail := func(name string, err error) int {
-		code := "api_or_configuration_error"
-		for _, candidate := range []string{"invalid_grant", "invalid_client", "insufficientPermissions", "storageQuotaExceeded"} {
-			if strings.Contains(err.Error(), candidate) {
-				code = candidate
-				break
-			}
-		}
-		r.Stages = append(r.Stages, stage{Name: name, Status: "failed", ErrorCode: code})
-		// API errors can contain document IDs, SQL, credentials or URLs. Only the
-		// private error file receives details; stdout and summary contain stage names.
-		_ = os.WriteFile(filepath.Join(dir, "error.txt"), []byte(err.Error()), 0600)
-		return finish(1)
-	}
 	project := os.Getenv("BIGQUERY_PROJECT_ID")
 	silver := value("BQ_SILVER_DATASET_ID", "etl_silver")
 	gold := value("BIGQUERY_GOLD_DATASET_ID", "etl_gold")
@@ -116,92 +92,87 @@ func run() int {
 	folder := os.Getenv("DRIVE_EXPORT_FOLDER_ID")
 	sql, err := goldverify.ComparisonSQL(project, silver, gold)
 	if err != nil {
-		return fail("configuration", err)
+		return finish(r.fail(configurationStage, err))
 	}
 	if folder == "" {
-		return fail("configuration", fmt.Errorf("DRIVE_EXPORT_FOLDER_ID required"))
+		return finish(r.fail(configurationStage, fmt.Errorf("DRIVE_EXPORT_FOLDER_ID required")))
 	}
+	r.Stages[configurationStage].Status = "passed"
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
 	defer cancel()
-	if *mutate {
-		cmd := exec.CommandContext(ctx, "bash", "scripts/refresh_gold_marts.sh")
-		cmd.Env = append(os.Environ(), "BQ_PROJECT_ID="+project, "BQ_GOLD_DATASET_ID="+gold, "BQ_SILVER_DATASET_ID="+silver, "BQ_LOCATION="+location)
-		output, err := cmd.CombinedOutput()
-		if err != nil {
-			return fail("refresh", fmt.Errorf("%w: %s", err, output))
+	// Lazily construct CSV clients only after Gold comparison succeeds.
+	var src *bqclient.Client
+	var dest *drive.Client
+	defer func() {
+		if src != nil {
+			src.Close()
 		}
-		r.Stages = append(r.Stages, stage{Name: "refresh", Status: "passed"})
-	} else {
-		r.Stages = append(r.Stages, stage{Name: "refresh", Status: "not_requested"})
-	}
-	client, err := bigquery.NewClient(ctx, project)
-	if err != nil {
-		return fail("BigQuery authentication", err)
-	}
-	defer client.Close()
-	query := client.Query(sql)
-	query.Location = location
-	iter, err := query.Read(ctx)
-	if err != nil {
-		return fail("Gold comparison", err)
-	}
-	row := map[string]bigquery.Value{}
-	if err = iter.Next(&row); err != nil {
-		return fail("Gold comparison", err)
-	}
-	counts := map[string]int64{}
-	for k, v := range row {
-		n, ok := v.(int64)
-		if !ok {
-			return fail("Gold comparison", fmt.Errorf("unexpected count type"))
-		}
-		counts[k] = n
-	}
-	good := goldverify.GoldMatches(counts, *empty)
-	state := "passed"
-	if !good {
-		state = "failed"
-	}
-	r.Stages = append(r.Stages, stage{Name: "Gold comparison", Status: state, Counts: counts})
-	if !good {
-		return finish(1)
-	}
-	src, err := bqclient.NewClient(ctx)
-	if err != nil {
-		return fail("CSV BigQuery authentication", err)
-	}
-	defer src.Close()
-	dest, err := drive.NewClient(ctx)
-	if err != nil {
-		return fail("Drive authentication", err)
-	}
-	rounds := 1
-	if *mutate {
-		rounds = 2
-	}
-	var previous map[string]string
-	for i := 1; i <= rounds; i++ {
-		name := fmt.Sprintf("CSV round %d", i)
-		if *mutate {
-			if err = goldreport.Export(ctx, dest, src, folder); err != nil {
-				return fail(name+" export", err)
+	}()
+	csvClients := func(ctx context.Context) error {
+		if src == nil {
+			var err error
+			src, err = bqclient.NewClient(ctx)
+			if err != nil {
+				return err
 			}
 		}
-		results, ids, err := goldverify.CheckDrive(ctx, src, dest, folder, *empty, previous)
-		state := "passed"
-		if err != nil {
-			state = "failed"
+		if dest == nil {
+			var err error
+			dest, err = drive.NewClient(ctx)
+			if err != nil {
+				return err
+			}
 		}
-		r.Stages = append(r.Stages, stage{Name: name, Status: state, CSV: results})
-		if err != nil {
-			return fail(name, err)
-		}
-		previous = ids
+		return nil
 	}
-	if !*mutate {
-		r.Stages = append(r.Stages, stage{Name: "repeat export / stable IDs", Status: "not_requested"})
+	ops := verificationOps{
+		refresh: func(ctx context.Context) error {
+			cmd := exec.CommandContext(ctx, "bash", "scripts/refresh_gold_marts.sh")
+			cmd.Env = append(os.Environ(), "BQ_PROJECT_ID="+project, "BQ_GOLD_DATASET_ID="+gold, "BQ_SILVER_DATASET_ID="+silver, "BQ_LOCATION="+location)
+			output, err := cmd.CombinedOutput()
+			if err != nil {
+				return fmt.Errorf("%w: %s", err, output)
+			}
+			return nil
+		},
+		compare: func(ctx context.Context) (map[string]int64, error) {
+			client, err := bigquery.NewClient(ctx, project)
+			if err != nil {
+				return nil, err
+			}
+			defer client.Close()
+			query := client.Query(sql)
+			query.Location = location
+			iter, err := query.Read(ctx)
+			if err != nil {
+				return nil, err
+			}
+			row := map[string]bigquery.Value{}
+			if err = iter.Next(&row); err != nil {
+				return nil, err
+			}
+			counts := map[string]int64{}
+			for k, v := range row {
+				n, ok := v.(int64)
+				if !ok {
+					return nil, fmt.Errorf("unexpected count type")
+				}
+				counts[k] = n
+			}
+			return counts, nil
+		},
+		export: func(ctx context.Context) error {
+			if err := csvClients(ctx); err != nil {
+				return err
+			}
+			return goldreport.Export(ctx, dest, src, folder)
+		},
+		check: func(ctx context.Context, previous map[string]string) ([]goldverify.CSVResult, map[string]string, error) {
+			if err := csvClients(ctx); err != nil {
+				return nil, nil, err
+			}
+			return goldverify.CheckDrive(ctx, src, dest, folder, *empty, previous)
+		},
 	}
-	r.Stages = append(r.Stages, stage{Name: "dashboard", Status: "unverified"})
-	r.Status = "partial"
-	return finish(2)
+	return finish(verify(ctx, &r, verificationOptions{mutate: *mutate, allowEmpty: *empty}, ops))
 }

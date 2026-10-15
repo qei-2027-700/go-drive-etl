@@ -19,6 +19,8 @@ BigQueryはADCを使う。既存の `GOOGLE_APPLICATION_CREDENTIALS` または `
 
 ## 実行
 
+`cmd/verify_gold` のモックテストでは、通常実行で再集計・再出力を呼ばないこと、書込モードで2回出力すること、各段階の失敗後に後続処理を呼ばないこと、結果が重複せず途中の検証値を保持することを確認する。
+
 ```bash
 # 合成データ・モックだけで検証。クラウドアクセスなし。
 go test ./internal/goldverify ./internal/goldreport ./cmd/verify_gold ./cmd/worker
@@ -38,7 +40,7 @@ go run ./cmd/verify_gold --refresh-and-export
 
 ## 結果の判定
 
-コマンドはUTCの開始・終了日時と段階別結果をJSONで出力する。Goldの両方向の全列差分件数、期待・実件数、画面スコアカードの期待値、CSVのデータ行数・列数、重複件数、完全一致、2回目のID維持を記録する。`stable_id: false` は初回では比較未実施、2回目では失敗を示す。行数の比較は `EXCEPT DISTINCT` で消える重複行も検出する。
+コマンドはUTCの開始・終了日時と段階別結果をJSONで出力する。各段階は成功・失敗にかかわらず1件だけ記録し、失敗時も途中の件数やCSV検証値を保持する。失敗後の段階は実行せず、未実施として残す。Goldの両方向の全列差分件数、期待・実件数、画面スコアカードの期待値、CSVのデータ行数・列数、重複件数、完全一致、2回目のID維持を記録する。`stable_id: false` は初回では比較未実施、2回目では失敗を示す。行数の比較は `EXCEPT DISTINCT` で消える重複行も検出する。
 
 | 状態 | 対応 |
 | --- | --- |
