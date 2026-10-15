@@ -36,6 +36,7 @@ func (r *FileRepository) Upsert(ctx context.Context, f *domain.File) error {
 			OR EXCLUDED.checksum = ''
 			OR files.checksum <> EXCLUDED.checksum
 			OR files.sync_status = 'failed'
+			OR files.path <> EXCLUDED.path
 		`, f.DriveFileID, f.Path, f.Checksum, f.MimeType)
 
 	return err

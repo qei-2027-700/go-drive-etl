@@ -37,9 +37,8 @@ type fileDoc struct {
 	UpdatedAt   time.Time `firestore:"updated_at,serverTimestamp"`
 }
 
-// Upsert は新規ファイルを pending として登録する。既存ファイルは checksum が変わった
-// 場合だけ pending に戻す。md5Checksum が空の Google Workspace ファイルは変更を比較
-// できないため、常に再処理対象として更新する。
+// Upsert queues new, renamed, changed, or previously failed files for processing.
+// Workspace files with an empty checksum are always queued.
 func (r *FirestoreFileRepository) Upsert(ctx context.Context, f *domain.File) error {
 	docRef := r.client.Collection(filesCollection).Doc(f.DriveFileID)
 	return r.client.RunTransaction(ctx, func(ctx context.Context, tx *firestore.Transaction) error {
@@ -57,7 +56,10 @@ func (r *FirestoreFileRepository) Upsert(ctx context.Context, f *domain.File) er
 		}
 		// A failed file must be retried on the next discovery, even if Drive's
 		// checksum is unchanged. Successfully processed files stay untouched.
-		if f.Checksum != "" && existing.Checksum == f.Checksum && existing.SyncStatus != string(domain.SyncStatusFailed) {
+		if f.Checksum != "" &&
+			existing.Checksum == f.Checksum &&
+			existing.SyncStatus != string(domain.SyncStatusFailed) &&
+			existing.Path == f.Path {
 			return nil
 		}
 		return tx.Set(docRef, newFileDoc(f))
