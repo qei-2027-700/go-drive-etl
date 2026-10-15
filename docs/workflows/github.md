@@ -100,7 +100,7 @@ Blocks: #789
 
     日本語の本文は `yomiyasu` スキルで推敲し、意味・条件を保って重複や不要な前置きを省きます。本文をファイルに保存し、スキルのリンターで確認してから `--body-file` で渡します。
 
-    `.github/PULL_REQUEST_TEMPLATE.md` と同じ構成で、本文ファイルを作成します。生成元の表記は末尾に置きます。
+    `.github/PULL_REQUEST_TEMPLATE.md` と同じ構成で、本文ファイルを作成します。Summary は主な変更点、Test plan は変更に必要な検証と結果を記載します。未実施の検証は理由を添えます。生成元の表記や、下記のマージ条件と重複するチェックリストは本文に追加しません。
 
     ```markdown
     > [!IMPORTANT]
@@ -116,16 +116,7 @@ Blocks: #789
 
     ## Test plan
 
-    - [ ] <確認事項1>
-    - [ ] <確認事項2>
-
-    ## Merge checklist
-
-    - [ ] CI is green
-    - [ ] I reviewed the final diff
-    - [ ] The related Issue's acceptance criteria are satisfied
-
-    > 🤖 Created via skill `/gh-pr`
+    - <実行した検証と結果。未実施の場合は理由を記載>
     ```
 
     目的の記載例：

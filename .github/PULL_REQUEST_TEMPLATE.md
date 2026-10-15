@@ -9,18 +9,8 @@ Closes #
 
 ## Summary
 
-- Describe the change and its user-facing effect.
+- <主な変更点を簡潔に記載>
 
 ## Test plan
 
-- [ ] `go test ./...`
-- [ ] Relevant static checks completed
-- [ ] Manual verification, if applicable
-
-## Merge checklist
-
-- [ ] CI is green
-- [ ] I reviewed the final diff
-- [ ] The related Issue's acceptance criteria are satisfied
-
-> 🤖 Created with an AI coding agent or manually
+- <実行した検証と結果。未実施の場合は理由を記載>
