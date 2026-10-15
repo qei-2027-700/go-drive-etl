@@ -38,3 +38,14 @@ variable "looker_studio_data_source_editor_members" {
   type        = set(string)
   default     = []
 }
+
+variable "reflection_app_impersonator_members" {
+  description = "Principals allowed to impersonate only the reflection application account for verification. No keys are created."
+  type        = set(string)
+  default     = []
+
+  validation {
+    condition     = alltrue([for member in var.reflection_app_impersonator_members : can(regex("^(user|group|serviceAccount):[^[:space:]]+@[^[:space:]]+$", member))])
+    error_message = "Use explicit user:, group: or serviceAccount: principals."
+  }
+}

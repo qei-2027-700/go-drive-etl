@@ -38,7 +38,7 @@ ORDER BY reflection_sequence, file_id
 
 ## 権限・料金・保持期間
 
-通常の View の参照には、クエリ実行プロジェクトの `roles/bigquery.jobUser` と、View および参照先の各 View・元テーブルに対する読み取り権限が必要である。アプリ専用のサービスアカウントを使い、必要なリソースに読み取り権限を限定する。Gold の読み取り権限だけでは上流へのアクセスは得られない。上流の直接参照を許可しない構成では、参照する View の連鎖を含めた Authorized View の設計・設定を別途行う。今回、IAM と Authorized View は追加しない。[Google Cloud の権限説明](https://docs.cloud.google.com/bigquery/docs/create-authorized-views)
+通常の View の参照には、クエリ実行プロジェクトの `roles/bigquery.jobUser` と、View および参照先の各 View・元テーブルに対する読み取り権限が必要である。#137 の実装では、専用アカウントに必要な4リソースの読み取り権限を個別に付与する。Authorized View は使用しない。公開範囲、認証、適用後の検証は [アプリ用アカウントの検証手順](reflection-app-access.md) を参照する。[Google Cloud の権限説明](https://docs.cloud.google.com/bigquery/docs/control-access-to-resources-iam)
 
 既存の BI 用アカウントは Gold dataset の読み取り権限を持つが、Raw / Silver の権限は持たないため、この通常の View の本文を取得するには不足する。BI の権限を広げる変更や、この View を Authorized View にする変更では、本文へのアクセス範囲も確認する。既存 Mart の SQL、CSV 出力対象、BI 設定は変更しない。
 
