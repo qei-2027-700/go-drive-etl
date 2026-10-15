@@ -17,6 +17,7 @@ import (
 	"github.com/qei-2027-700/go-drive-etl/internal/domain"
 	"github.com/qei-2027-700/go-drive-etl/internal/drive"
 	"github.com/qei-2027-700/go-drive-etl/internal/etl"
+	"github.com/qei-2027-700/go-drive-etl/internal/goldreport"
 	"github.com/qei-2027-700/go-drive-etl/internal/repository"
 )
 
@@ -127,15 +128,8 @@ func exportGoldReports(ctx context.Context, driveClient drive.DriveClient, bq bq
 		log.Println("DRIVE_EXPORT_FOLDER_ID が未設定のため Gold CSV の出力をスキップします。")
 		return nil
 	}
-	for _, table := range []string{"mart_ingestion_daily", "mart_file_latest"} {
-		contents, err := bq.ExportTableCSV(ctx, table)
-		if err != nil {
-			return withStage("load", fmt.Errorf("Gold Mart の CSV 抽出に失敗: table=%s: %w", table, err))
-		}
-		name := table + ".csv"
-		if err := driveClient.UpsertFile(ctx, exportFolderID, name, "text/csv", contents); err != nil {
-			return withStage("load", fmt.Errorf("Gold Mart CSV の Drive 出力に失敗: file=%s: %w", name, err))
-		}
+	if err := goldreport.Export(ctx, driveClient, bq, exportFolderID); err != nil {
+		return withStage("load", err)
 	}
 	return nil
 }
