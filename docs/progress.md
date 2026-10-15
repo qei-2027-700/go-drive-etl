@@ -1,9 +1,11 @@
 # 進捗管理
 
 > GCP プロジェクト: **`go-drive-etl`**
-> 最終更新: **2026-10-11**
+> 最終更新: **2026-10-15**
 
 ## 現在地
+
+#129 の文書単位 Gold View `reflection_documents` を実装した。Terraform の静的検証と、実 BigQuery 上の合成データによる9件の SQL ASSERT は成功した。2026-10-15 にユーザーが実環境へ View を適用し、2026年10月の月検索で重複なく1文書を取得し、本文と出典 URL があることを確認した。アプリ用 IAM は未検証である。公開列・月検索・適用手順は [振り返り文書 View](reflection-documents.md) を参照。
 
 Portfolio v1 の対象である Phase 1（Markdown を対象とする AI-Ready Pipeline）と Phase 3（BI & Delivery）の実装は完了している。Google Drive からの取得、Firestore による冪等管理、Markdown のチャンク化、BigQuery へのロード、Gold Mart の CSV 配信、データポータルでの可視化までを備える。`go test ./...` は全パッケージ成功。2026-10-11 のWorker実行で3件を検出し、追加ファイルを含む15チャンクをBigQueryへロードした。Gold Martを再集計し、DriveへCSVを再出力した。データポータルの [Ingestion health](https://datastudio.google.com/u/1/reporting/4ea2ca0b-3c98-4184-93d8-e779652451e2/page/AF69F) の最新値は再読み込み後に確認する。詳細は [README のデモ](../README.md#デモ) に記録している。
 

@@ -156,6 +156,8 @@ flowchart LR
   current --> silver["etl_silver.silver_chunks\nView"]
   silver -->|"手動 SQL 実行"| daily["etl_gold.mart_ingestion_daily"]
   silver -->|"手動 SQL 実行"| latest["etl_gold.mart_file_latest"]
+  silver --> documents["etl_gold.reflection_documents\nView・文書単位"]
+  documents --> chat["外部チャットアプリ"]
   daily --> looker["データポータル"]
   daily --> export["CSV export"]
   latest --> looker
@@ -163,7 +165,7 @@ flowchart LR
 ```
 
 - Bronze は append-only の `chunks` と、最新コンテンツ版を公開する `chunks_current` で構成する。
-- Silver は `chunks_current` だけを入力とする View であり、`ingested_date`（Asia/Tokyo）、`content_length`、`is_embedded` を一貫して提供する。RAG は `chunks_current`、BI とレポートは Gold Mart を参照する。
+- Silver は `chunks_current` だけを入力とする View であり、`ingested_date`（Asia/Tokyo）、`content_length`、`is_embedded` を一貫して提供する。チャンク検索には `chunks_current`、外部チャットアプリの文書取得には Gold View `reflection_documents`、BI とレポートには Gold Mart を使う。文書 View の契約と利用手順は [振り返り文書 View](reflection-documents.md) を参照。
 - Gold は `mart_ingestion_daily`（日別のユニークファイル数・チャンク数・文字数・embedding 状態）と `mart_file_latest`（ファイルごとの最新サマリ）を物理テーブルとして提供する。ETL 後または BI / CSV 確認前に `BQ_PROJECT_ID=<project-id> ./scripts/refresh_gold_marts.sh` を実行し、両テーブルを全件再計算する。SQL は `sql/refresh_gold_marts.sql` でバージョン管理し、`CREATE OR REPLACE TABLE` により `WRITE_TRUNCATE` 相当で更新する。Worker に `DRIVE_EXPORT_FOLDER_ID`（`/export-reports/` のフォルダ ID）を設定すると、`BIGQUERY_GOLD_DATASET_ID`（既定: `etl_gold`）の両 Mart を CSV 化して同名ファイルを更新するため、再実行してもレポートは重複しない。
 - BigQuery Sandbox では全 dataset の table expiration が最大 60 日に制限されるため、Bronze / Silver / Gold とも 60 日 TTL を明示する。課金を有効化したら、Silver / Gold の保持期間を用途に応じて見直す。
 - 現 Worker は `drive_files` を BigQuery にロードしていないため、初期 Mart は `chunks_current` から得られる指標に限定する。ファイル名・MIME type 別の分析が必要になった時点で `drive_files` のロードを追加する。

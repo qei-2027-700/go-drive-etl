@@ -27,7 +27,7 @@ ORDER BY file_id, chunk_index
 
 この条件はタイトルの年月による検索であり、実際の振り返り対象期間との重複検索ではない。正確な期間が不明でも年月が分かれば月検索には含める。年月も不明な文書はこの検索に含まれない。
 
-外部の Python / FastAPI アプリ向けに文書単位で公開する Gold View は #129 の担当とし、今回の変更では追加しない。
+外部の Python / FastAPI アプリ向けの文書単位の取得には、Gold View `reflection_documents` を使う。公開列・月検索・検証・利用手順は [振り返り文書 View](reflection-documents.md) を参照。
 
 ## 適用と再処理
 

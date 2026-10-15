@@ -41,6 +41,54 @@ resource "google_bigquery_table" "silver_chunks" {
   }
 }
 
+resource "google_bigquery_table" "reflection_documents" {
+  depends_on = [google_bigquery_table.silver_chunks]
+
+  dataset_id          = google_bigquery_dataset.gold.dataset_id
+  table_id            = "reflection_documents"
+  deletion_protection = true
+
+  view {
+    query = <<-SQL
+      WITH documents AS (
+        SELECT
+          file_id,
+          STRING_AGG(content, '\n\n' ORDER BY chunk_index) AS content,
+          MAX(ingested_at) AS ingested_at,
+          ARRAY_AGG(
+            STRUCT(
+              document_name,
+              drive_url,
+              content_version,
+              reflection_month,
+              reflection_sequence,
+              reflection_start_date,
+              reflection_end_date
+            )
+            ORDER BY ingested_at DESC, chunk_index ASC
+            LIMIT 1
+          )[OFFSET(0)] AS metadata
+        FROM `${var.project_id}.${google_bigquery_dataset.silver.dataset_id}.silver_chunks`
+        GROUP BY file_id
+      )
+      SELECT
+        file_id,
+        metadata.document_name,
+        metadata.drive_url,
+        content,
+        metadata.content_version,
+        ingested_at,
+        metadata.reflection_month,
+        metadata.reflection_sequence,
+        metadata.reflection_start_date,
+        metadata.reflection_end_date
+      FROM documents
+    SQL
+
+    use_legacy_sql = false
+  }
+}
+
 # BigQuery Sandbox requires table expiration to be at most 60 days. Keep this
 # explicit until billing is enabled; Gold marts are rebuilt before BI use.
 resource "google_bigquery_dataset" "gold" {
