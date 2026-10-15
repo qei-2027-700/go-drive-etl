@@ -2,7 +2,7 @@
 // versions:
 // 	protoc-gen-go v1.36.11
 // 	protoc        v7.35.0
-// source: record.proto
+// source: proto/record.proto
 
 package pb
 
@@ -61,11 +61,11 @@ func (x SyncStatus) String() string {
 }
 
 func (SyncStatus) Descriptor() protoreflect.EnumDescriptor {
-	return file_record_proto_enumTypes[0].Descriptor()
+	return file_proto_record_proto_enumTypes[0].Descriptor()
 }
 
 func (SyncStatus) Type() protoreflect.EnumType {
-	return &file_record_proto_enumTypes[0]
+	return &file_proto_record_proto_enumTypes[0]
 }
 
 func (x SyncStatus) Number() protoreflect.EnumNumber {
@@ -74,7 +74,7 @@ func (x SyncStatus) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use SyncStatus.Descriptor instead.
 func (SyncStatus) EnumDescriptor() ([]byte, []int) {
-	return file_record_proto_rawDescGZIP(), []int{0}
+	return file_proto_record_proto_rawDescGZIP(), []int{0}
 }
 
 // パイプラインを流れる Driveファイルの型
@@ -92,7 +92,7 @@ type FileRecord struct {
 
 func (x *FileRecord) Reset() {
 	*x = FileRecord{}
-	mi := &file_record_proto_msgTypes[0]
+	mi := &file_proto_record_proto_msgTypes[0]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -104,7 +104,7 @@ func (x *FileRecord) String() string {
 func (*FileRecord) ProtoMessage() {}
 
 func (x *FileRecord) ProtoReflect() protoreflect.Message {
-	mi := &file_record_proto_msgTypes[0]
+	mi := &file_proto_record_proto_msgTypes[0]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -117,7 +117,7 @@ func (x *FileRecord) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FileRecord.ProtoReflect.Descriptor instead.
 func (*FileRecord) Descriptor() ([]byte, []int) {
-	return file_record_proto_rawDescGZIP(), []int{0}
+	return file_proto_record_proto_rawDescGZIP(), []int{0}
 }
 
 func (x *FileRecord) GetDriveFileId() string {
@@ -164,18 +164,27 @@ func (x *FileRecord) GetUpdatedAt() *timestamppb.Timestamp {
 
 // ファイルを分割したチャンクの型
 type ChunkRecord struct {
-	state           protoimpl.MessageState `protogen:"open.v1"`
-	FileId          string                 `protobuf:"bytes,1,opt,name=file_id,json=fileId,proto3" json:"file_id,omitempty"`
-	ChunkIndex      int32                  `protobuf:"varint,2,opt,name=chunk_index,json=chunkIndex,proto3" json:"chunk_index,omitempty"`
-	Content         string                 `protobuf:"bytes,3,opt,name=content,proto3" json:"content,omitempty"`
-	EmbeddingStatus string                 `protobuf:"bytes,4,opt,name=embedding_status,json=embeddingStatus,proto3" json:"embedding_status,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	state               protoimpl.MessageState `protogen:"open.v1"`
+	FileId              string                 `protobuf:"bytes,1,opt,name=file_id,json=fileId,proto3" json:"file_id,omitempty"`
+	ChunkIndex          int32                  `protobuf:"varint,2,opt,name=chunk_index,json=chunkIndex,proto3" json:"chunk_index,omitempty"`
+	Content             string                 `protobuf:"bytes,3,opt,name=content,proto3" json:"content,omitempty"`
+	EmbeddingStatus     string                 `protobuf:"bytes,4,opt,name=embedding_status,json=embeddingStatus,proto3" json:"embedding_status,omitempty"`
+	ReflectionStartDate *string                `protobuf:"bytes,5,opt,name=reflection_start_date,json=reflectionStartDate,proto3,oneof" json:"reflection_start_date,omitempty"`
+	ReflectionEndDate   *string                `protobuf:"bytes,6,opt,name=reflection_end_date,json=reflectionEndDate,proto3,oneof" json:"reflection_end_date,omitempty"`
+	DocumentName        *string                `protobuf:"bytes,7,opt,name=document_name,json=documentName,proto3,oneof" json:"document_name,omitempty"`
+	DriveUrl            *string                `protobuf:"bytes,8,opt,name=drive_url,json=driveUrl,proto3,oneof" json:"drive_url,omitempty"`
+	ContentVersion      *string                `protobuf:"bytes,9,opt,name=content_version,json=contentVersion,proto3,oneof" json:"content_version,omitempty"`
+	IngestedAt          *timestamppb.Timestamp `protobuf:"bytes,10,opt,name=ingested_at,json=ingestedAt,proto3" json:"ingested_at,omitempty"`
+	IsDeleted           *bool                  `protobuf:"varint,11,opt,name=is_deleted,json=isDeleted,proto3,oneof" json:"is_deleted,omitempty"`
+	ReflectionMonth     *string                `protobuf:"bytes,12,opt,name=reflection_month,json=reflectionMonth,proto3,oneof" json:"reflection_month,omitempty"`
+	ReflectionSequence  *int32                 `protobuf:"varint,13,opt,name=reflection_sequence,json=reflectionSequence,proto3,oneof" json:"reflection_sequence,omitempty"`
+	unknownFields       protoimpl.UnknownFields
+	sizeCache           protoimpl.SizeCache
 }
 
 func (x *ChunkRecord) Reset() {
 	*x = ChunkRecord{}
-	mi := &file_record_proto_msgTypes[1]
+	mi := &file_proto_record_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -187,7 +196,7 @@ func (x *ChunkRecord) String() string {
 func (*ChunkRecord) ProtoMessage() {}
 
 func (x *ChunkRecord) ProtoReflect() protoreflect.Message {
-	mi := &file_record_proto_msgTypes[1]
+	mi := &file_proto_record_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -200,7 +209,7 @@ func (x *ChunkRecord) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ChunkRecord.ProtoReflect.Descriptor instead.
 func (*ChunkRecord) Descriptor() ([]byte, []int) {
-	return file_record_proto_rawDescGZIP(), []int{1}
+	return file_proto_record_proto_rawDescGZIP(), []int{1}
 }
 
 func (x *ChunkRecord) GetFileId() string {
@@ -231,11 +240,74 @@ func (x *ChunkRecord) GetEmbeddingStatus() string {
 	return ""
 }
 
-var File_record_proto protoreflect.FileDescriptor
+func (x *ChunkRecord) GetReflectionStartDate() string {
+	if x != nil && x.ReflectionStartDate != nil {
+		return *x.ReflectionStartDate
+	}
+	return ""
+}
 
-const file_record_proto_rawDesc = "" +
+func (x *ChunkRecord) GetReflectionEndDate() string {
+	if x != nil && x.ReflectionEndDate != nil {
+		return *x.ReflectionEndDate
+	}
+	return ""
+}
+
+func (x *ChunkRecord) GetDocumentName() string {
+	if x != nil && x.DocumentName != nil {
+		return *x.DocumentName
+	}
+	return ""
+}
+
+func (x *ChunkRecord) GetDriveUrl() string {
+	if x != nil && x.DriveUrl != nil {
+		return *x.DriveUrl
+	}
+	return ""
+}
+
+func (x *ChunkRecord) GetContentVersion() string {
+	if x != nil && x.ContentVersion != nil {
+		return *x.ContentVersion
+	}
+	return ""
+}
+
+func (x *ChunkRecord) GetIngestedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.IngestedAt
+	}
+	return nil
+}
+
+func (x *ChunkRecord) GetIsDeleted() bool {
+	if x != nil && x.IsDeleted != nil {
+		return *x.IsDeleted
+	}
+	return false
+}
+
+func (x *ChunkRecord) GetReflectionMonth() string {
+	if x != nil && x.ReflectionMonth != nil {
+		return *x.ReflectionMonth
+	}
+	return ""
+}
+
+func (x *ChunkRecord) GetReflectionSequence() int32 {
+	if x != nil && x.ReflectionSequence != nil {
+		return *x.ReflectionSequence
+	}
+	return 0
+}
+
+var File_proto_record_proto protoreflect.FileDescriptor
+
+const file_proto_record_proto_rawDesc = "" +
 	"\n" +
-	"\frecord.proto\x12\x06record\x1a\x1fgoogle/protobuf/timestamp.proto\"\xed\x01\n" +
+	"\x12proto/record.proto\x12\x06record\x1a\x1fgoogle/protobuf/timestamp.proto\"\xed\x01\n" +
 	"\n" +
 	"FileRecord\x12\"\n" +
 	"\rdrive_file_id\x18\x01 \x01(\tR\vdriveFileId\x12\x12\n" +
@@ -245,13 +317,34 @@ const file_record_proto_rawDesc = "" +
 	"\vsync_status\x18\x05 \x01(\x0e2\x12.record.SyncStatusR\n" +
 	"syncStatus\x129\n" +
 	"\n" +
-	"updated_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\"\x8c\x01\n" +
+	"updated_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\"\xdd\x05\n" +
 	"\vChunkRecord\x12\x17\n" +
 	"\afile_id\x18\x01 \x01(\tR\x06fileId\x12\x1f\n" +
 	"\vchunk_index\x18\x02 \x01(\x05R\n" +
 	"chunkIndex\x12\x18\n" +
 	"\acontent\x18\x03 \x01(\tR\acontent\x12)\n" +
-	"\x10embedding_status\x18\x04 \x01(\tR\x0fembeddingStatus*\x8c\x01\n" +
+	"\x10embedding_status\x18\x04 \x01(\tR\x0fembeddingStatus\x127\n" +
+	"\x15reflection_start_date\x18\x05 \x01(\tH\x00R\x13reflectionStartDate\x88\x01\x01\x123\n" +
+	"\x13reflection_end_date\x18\x06 \x01(\tH\x01R\x11reflectionEndDate\x88\x01\x01\x12(\n" +
+	"\rdocument_name\x18\a \x01(\tH\x02R\fdocumentName\x88\x01\x01\x12 \n" +
+	"\tdrive_url\x18\b \x01(\tH\x03R\bdriveUrl\x88\x01\x01\x12,\n" +
+	"\x0fcontent_version\x18\t \x01(\tH\x04R\x0econtentVersion\x88\x01\x01\x12;\n" +
+	"\vingested_at\x18\n" +
+	" \x01(\v2\x1a.google.protobuf.TimestampR\n" +
+	"ingestedAt\x12\"\n" +
+	"\n" +
+	"is_deleted\x18\v \x01(\bH\x05R\tisDeleted\x88\x01\x01\x12.\n" +
+	"\x10reflection_month\x18\f \x01(\tH\x06R\x0freflectionMonth\x88\x01\x01\x124\n" +
+	"\x13reflection_sequence\x18\r \x01(\x05H\aR\x12reflectionSequence\x88\x01\x01B\x18\n" +
+	"\x16_reflection_start_dateB\x16\n" +
+	"\x14_reflection_end_dateB\x10\n" +
+	"\x0e_document_nameB\f\n" +
+	"\n" +
+	"_drive_urlB\x12\n" +
+	"\x10_content_versionB\r\n" +
+	"\v_is_deletedB\x13\n" +
+	"\x11_reflection_monthB\x16\n" +
+	"\x14_reflection_sequence*\x8c\x01\n" +
 	"\n" +
 	"SyncStatus\x12\x1b\n" +
 	"\x17SYNC_STATUS_UNSPECIFIED\x10\x00\x12\x17\n" +
@@ -261,56 +354,58 @@ const file_record_proto_rawDesc = "" +
 	"\x12SYNC_STATUS_FAILED\x10\x04B2Z0github.com/qei-2027-700/go-drive-etl/internal/pbb\x06proto3"
 
 var (
-	file_record_proto_rawDescOnce sync.Once
-	file_record_proto_rawDescData []byte
+	file_proto_record_proto_rawDescOnce sync.Once
+	file_proto_record_proto_rawDescData []byte
 )
 
-func file_record_proto_rawDescGZIP() []byte {
-	file_record_proto_rawDescOnce.Do(func() {
-		file_record_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_record_proto_rawDesc), len(file_record_proto_rawDesc)))
+func file_proto_record_proto_rawDescGZIP() []byte {
+	file_proto_record_proto_rawDescOnce.Do(func() {
+		file_proto_record_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_proto_record_proto_rawDesc), len(file_proto_record_proto_rawDesc)))
 	})
-	return file_record_proto_rawDescData
+	return file_proto_record_proto_rawDescData
 }
 
-var file_record_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_record_proto_msgTypes = make([]protoimpl.MessageInfo, 2)
-var file_record_proto_goTypes = []any{
+var file_proto_record_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
+var file_proto_record_proto_msgTypes = make([]protoimpl.MessageInfo, 2)
+var file_proto_record_proto_goTypes = []any{
 	(SyncStatus)(0),               // 0: record.SyncStatus
 	(*FileRecord)(nil),            // 1: record.FileRecord
 	(*ChunkRecord)(nil),           // 2: record.ChunkRecord
 	(*timestamppb.Timestamp)(nil), // 3: google.protobuf.Timestamp
 }
-var file_record_proto_depIdxs = []int32{
+var file_proto_record_proto_depIdxs = []int32{
 	0, // 0: record.FileRecord.sync_status:type_name -> record.SyncStatus
 	3, // 1: record.FileRecord.updated_at:type_name -> google.protobuf.Timestamp
-	2, // [2:2] is the sub-list for method output_type
-	2, // [2:2] is the sub-list for method input_type
-	2, // [2:2] is the sub-list for extension type_name
-	2, // [2:2] is the sub-list for extension extendee
-	0, // [0:2] is the sub-list for field type_name
+	3, // 2: record.ChunkRecord.ingested_at:type_name -> google.protobuf.Timestamp
+	3, // [3:3] is the sub-list for method output_type
+	3, // [3:3] is the sub-list for method input_type
+	3, // [3:3] is the sub-list for extension type_name
+	3, // [3:3] is the sub-list for extension extendee
+	0, // [0:3] is the sub-list for field type_name
 }
 
-func init() { file_record_proto_init() }
-func file_record_proto_init() {
-	if File_record_proto != nil {
+func init() { file_proto_record_proto_init() }
+func file_proto_record_proto_init() {
+	if File_proto_record_proto != nil {
 		return
 	}
+	file_proto_record_proto_msgTypes[1].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
-			RawDescriptor: unsafe.Slice(unsafe.StringData(file_record_proto_rawDesc), len(file_record_proto_rawDesc)),
+			RawDescriptor: unsafe.Slice(unsafe.StringData(file_proto_record_proto_rawDesc), len(file_proto_record_proto_rawDesc)),
 			NumEnums:      1,
 			NumMessages:   2,
 			NumExtensions: 0,
 			NumServices:   0,
 		},
-		GoTypes:           file_record_proto_goTypes,
-		DependencyIndexes: file_record_proto_depIdxs,
-		EnumInfos:         file_record_proto_enumTypes,
-		MessageInfos:      file_record_proto_msgTypes,
+		GoTypes:           file_proto_record_proto_goTypes,
+		DependencyIndexes: file_proto_record_proto_depIdxs,
+		EnumInfos:         file_proto_record_proto_enumTypes,
+		MessageInfos:      file_proto_record_proto_msgTypes,
 	}.Build()
-	File_record_proto = out.File
-	file_record_proto_goTypes = nil
-	file_record_proto_depIdxs = nil
+	File_proto_record_proto = out.File
+	file_proto_record_proto_goTypes = nil
+	file_proto_record_proto_depIdxs = nil
 }

@@ -10,6 +10,8 @@ resource "google_bigquery_dataset" "silver" {
 }
 
 resource "google_bigquery_table" "silver_chunks" {
+  depends_on = [google_bigquery_table.chunks_current]
+
   dataset_id          = google_bigquery_dataset.silver.dataset_id
   table_id            = "silver_chunks"
   deletion_protection = true
@@ -22,6 +24,12 @@ resource "google_bigquery_table" "silver_chunks" {
         content,
         content_version,
         ingested_at,
+        reflection_start_date,
+        reflection_end_date,
+        document_name,
+        drive_url,
+        reflection_month,
+        reflection_sequence,
         DATE(ingested_at, "Asia/Tokyo") AS ingested_date,
         embedding_status,
         embedding_status = "completed" AS is_embedded,

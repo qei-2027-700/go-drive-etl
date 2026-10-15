@@ -15,8 +15,11 @@ import (
 	"github.com/qei-2027-700/go-drive-etl/internal/domain"
 	"github.com/qei-2027-700/go-drive-etl/internal/drive"
 	"github.com/qei-2027-700/go-drive-etl/internal/parser"
+	"github.com/qei-2027-700/go-drive-etl/internal/pb"
 	"github.com/qei-2027-700/go-drive-etl/internal/repository"
 	"google.golang.org/api/googleapi"
+	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 var workspaceExportMimeTypes = map[string]string{
@@ -99,6 +102,7 @@ func Run(
 					}
 
 					if file.MimeType == "text/markdown" {
+						label := parser.ExtractReflectionLabel(content)
 						chunks, err := markdownParser.Parse(bytes.NewReader(content))
 						if err != nil {
 							log.Printf("Markdown parse failed: fileID=%s err=%v", file.DriveFileID, err)
@@ -112,15 +116,39 @@ func Run(
 						ingestedAt := time.Now().UTC()
 						chunkRows := make([]map[string]bigquery.Value, 0, max(1, len(chunks)))
 						for index, chunk := range chunks {
-							chunkRows = append(chunkRows, map[string]bigquery.Value{
-								"file_id":          file.DriveFileID,
-								"chunk_index":      index,
-								"content":          chunk,
-								"embedding_status": "pending",
-								"content_version":  contentVersion,
-								"ingested_at":      ingestedAt,
-								"is_deleted":       false,
-							})
+							record := &pb.ChunkRecord{
+								FileId:          file.DriveFileID,
+								ChunkIndex:      int32(index),
+								Content:         chunk,
+								EmbeddingStatus: "pending",
+								ContentVersion:  proto.String(contentVersion),
+								IngestedAt:      timestamppb.New(ingestedAt),
+								IsDeleted:       proto.Bool(false),
+								DocumentName:    proto.String(file.Path),
+								DriveUrl: proto.String(
+									"https://drive.google.com/file/d/" + file.DriveFileID + "/view",
+								),
+							}
+							if label != nil {
+								record.ReflectionMonth = proto.String(label.Month)
+								record.ReflectionSequence = proto.Int32(label.Sequence)
+							}
+							row := map[string]bigquery.Value{
+								"file_id":          record.FileId,
+								"chunk_index":      int(record.GetChunkIndex()),
+								"content":          record.Content,
+								"embedding_status": record.EmbeddingStatus,
+								"content_version":  record.GetContentVersion(),
+								"ingested_at":      record.GetIngestedAt().AsTime(),
+								"is_deleted":       record.GetIsDeleted(),
+								"document_name":    record.GetDocumentName(),
+								"drive_url":        record.GetDriveUrl(),
+							}
+							if record.ReflectionMonth != nil {
+								row["reflection_month"] = record.GetReflectionMonth()
+								row["reflection_sequence"] = record.GetReflectionSequence()
+							}
+							chunkRows = append(chunkRows, row)
 						}
 						if len(chunkRows) == 0 {
 							chunkRows = append(chunkRows, map[string]bigquery.Value{
@@ -131,6 +159,8 @@ func Run(
 								"content_version":  contentVersion,
 								"ingested_at":      ingestedAt,
 								"is_deleted":       true,
+								"document_name":    file.Path,
+								"drive_url":        "https://drive.google.com/file/d/" + file.DriveFileID + "/view",
 							})
 						}
 						if err := insertRowsWithRetry(ctx, bqClient, "chunks", chunkRows); err != nil {

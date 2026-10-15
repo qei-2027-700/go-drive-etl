@@ -105,6 +105,13 @@ func runPipeline(
 		}
 		if err := repo.Upsert(ctx, record); err != nil {
 			log.Printf("状態管理 DB への Upsert に失敗: file=%q id=%s err=%v", file.Name, file.Id, err)
+			continue
+		}
+		// Force reprocessing even when discovery found no content or name changes.
+		if os.Getenv("REPROCESS_ALL") == "true" {
+			if err := repo.UpdateStatus(ctx, file.Id, domain.SyncStatusPending); err != nil {
+				return fmt.Errorf("requeue file %s: %w", file.Id, err)
+			}
 		}
 	}
 

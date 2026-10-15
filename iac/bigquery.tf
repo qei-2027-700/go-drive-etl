@@ -88,11 +88,43 @@ resource "google_bigquery_table" "chunks" {
       name = "is_deleted"
       type = "BOOLEAN"
       mode = "NULLABLE"
-    }
+    },
+    {
+      name = "reflection_start_date"
+      type = "DATE"
+      mode = "NULLABLE"
+    },
+    {
+      name = "reflection_end_date"
+      type = "DATE"
+      mode = "NULLABLE"
+    },
+    {
+      name = "document_name"
+      type = "STRING"
+      mode = "NULLABLE"
+    },
+    {
+      name = "drive_url"
+      type = "STRING"
+      mode = "NULLABLE"
+    },
+    {
+      name = "reflection_month"
+      type = "STRING"
+      mode = "NULLABLE"
+    },
+    {
+      name = "reflection_sequence"
+      type = "INTEGER"
+      mode = "NULLABLE"
+    },
   ])
 }
 
 resource "google_bigquery_table" "chunks_current" {
+  depends_on = [google_bigquery_table.chunks]
+
   dataset_id          = google_bigquery_dataset.etl.dataset_id
   table_id            = "chunks_current"
   deletion_protection = true
@@ -113,14 +145,18 @@ resource "google_bigquery_table" "chunks_current" {
         ) = 1
       ),
       deduplicated_chunks AS (
-        SELECT file_id, chunk_index, content, embedding_status, content_version, ingested_at, is_deleted
+        SELECT file_id, chunk_index, content, embedding_status, content_version, ingested_at, is_deleted,
+          reflection_start_date, reflection_end_date, document_name, drive_url,
+          reflection_month, reflection_sequence
         FROM `${var.project_id}.${google_bigquery_dataset.etl.dataset_id}.chunks`
         QUALIFY ROW_NUMBER() OVER (
           PARTITION BY file_id, content_version, chunk_index ORDER BY ingested_at DESC
         ) = 1
       )
       SELECT chunks.file_id, chunks.chunk_index, chunks.content, chunks.embedding_status,
-        chunks.content_version, chunks.ingested_at
+        chunks.content_version, chunks.ingested_at,
+        chunks.reflection_start_date, chunks.reflection_end_date, chunks.document_name, chunks.drive_url,
+        chunks.reflection_month, chunks.reflection_sequence
       FROM deduplicated_chunks AS chunks
       INNER JOIN latest_versions USING (file_id, content_version)
       WHERE COALESCE(chunks.is_deleted, FALSE) = FALSE
