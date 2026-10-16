@@ -2,7 +2,7 @@
 
 Go の並行処理 + GCP (BigQuery) + Protocol Buffers で構成した、バッチ ETL データパイプライン。
 
-Google Drive の Markdown ファイルを回収し、チャンク化して BigQuery へロードする。Gold Mart の集計結果は CSV として Drive へ書き戻し、データポータルで可視化する。RAG と定期実行は将来の拡張である。
+Google Drive の Markdown ファイルを回収し、チャンク化して BigQuery へロードする。Gold Mart の集計結果は CSV として Drive へ書き戻し、データポータルで可視化する。文書単位の Gold View は別アプリ向けに本文と出典を提供する。定期実行は #141 で検討する。
 
 [![CI](https://github.com/qei-2027-700/go-drive-etl/actions/workflows/ci.yml/badge.svg)](https://github.com/qei-2027-700/go-drive-etl/actions/workflows/ci.yml)
 [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/qei-2027-700/go-drive-etl/badge)](https://securityscorecards.dev/viewer/?uri=github.com/qei-2027-700/go-drive-etl)
@@ -43,12 +43,12 @@ flowchart LR
     subgraph BQ["BigQuery"]
         BRONZE["Bronze / etl_raw<br/>生データ"]
         SILVER["Silver / View<br/>型安全な変換層"]
-        GOLD["Gold / Mart<br/>集計層"]
+        GOLD["Gold / Mart・文書 View<br/>集計・アプリ向け文書"]
     end
 
     subgraph CONS["活用"]
         LOOKER["データポータル<br/>（旧称: Looker Studio）"]
-        RAG["将来: RAG Agent CLI<br/>Vertex AI Embeddings"]
+        RAG["別repo: retrosprint-rag<br/>Nuxt 4 + FastAPI / AWS<br/>開発予定・ETL接続方式は検討中"]
     end
 
     RAW --> EX --> DL --> PV --> LD
@@ -58,7 +58,7 @@ flowchart LR
     LD --> BRONZE --> SILVER --> GOLD
     GOLD --> OUT
     GOLD --> LOOKER
-    SILVER -.将来の拡張.-> RAG
+    GOLD -.文書提供・接続方式検討.-> RAG
 ```
 
 ### メダリオンアーキテクチャ
@@ -118,7 +118,7 @@ for i := 0; i < 5; i++ {
 - Google Docs / Sheets / Slides など `md5Checksum` が空のファイルは比較できないため、検出するたびに `pending` に戻して再処理する
 - ステータスは `pending → processing → done / failed` と遷移し、失敗したファイルだけを次回拾い直せる
 
-BigQuery の `chunks` は BigQuery Sandbox でも使える append-only テーブルである。`content_version`（内容の SHA-256）と `ingested_at` を各チャンクに保持し、再実行で物理的な重複が生じても `chunks_current` View が最新バージョンだけを重複なく公開する。RAG など後続処理は `chunks` ではなく、この View を参照する。
+BigQuery の `chunks` は BigQuery Sandbox でも使える append-only テーブルである。`content_version`（内容の SHA-256）と `ingested_at` を各チャンクに保持し、再実行で物理的な重複が生じても `chunks_current` View が最新バージョンだけを重複なく公開する。チャンク単位の後続処理は `chunks` ではなく、この View を参照する。別アプリの文書取得には、Silver 経由で文書単位にまとめた Gold View `reflection_documents` を使う。
 
 実装は [internal/repository/firestore_repository.go](internal/repository/firestore_repository.go)。PostgreSQL 側のスキーマは [migrations/001_init.sql](migrations/001_init.sql)。
 
@@ -443,6 +443,7 @@ go-drive-etl/
 | CI / セキュリティ監視 | ✅ |
 | ファイルパーサー（Markdown チャンク化） | ✅ |
 | ETL パイプライン統合（`cmd/worker`） | ✅ |
+| アプリ向け文書 View・専用SAの読み取り検証 | ✅ #129・#137 |
 
 進捗の内訳は [docs/progress.md](docs/progress.md) を参照。
 
@@ -450,11 +451,19 @@ go-drive-etl/
 
 ## ロードマップ
 
-| Phase | ゴール |
+2026年10月末は、このリポジトリをETL / BIのポートフォリオとして仕上げ、動作・設計・制約を自分の言葉で説明できることを目標にする。別repoの `retrosprint-rag` はNuxt 4のフロントエンドとFastAPIのバックエンドを一体で開発し、完成前でも処理と構成を見せられる中間デモを目指す。約40%は月末の進み具合の目安であり、現在の実装率や測定済みの進捗ではない。アプリは11月以降も開発を続ける。
+
+| 対象 | 現状・次の作業 |
 |:---|:---|
-| Phase 1 | Markdown ファイルを Drive から取り込み、チャンク単位で BigQuery に格納するまでを通しで動かす。CSV / JSON / PDF は将来の拡張候補 |
-| Phase 2 | Vertex AI Embeddings と BigQuery Vector Search を用いた RAG Agent CLI を構築し、Recall / Faithfulness を計測する |
-| Phase 3 | Gold 層をデータポータル（旧称: Looker Studio）で可視化し、集計 CSV を Drive へ自動デリバリーする |
+| ETL / BI | Markdown取得・加工・Raw保存・Silver / Gold・CSV配信・BIは実装済み。再現手順と口頭説明を仕上げる |
+| 文書提供 | Gold Viewと専用SAでの月検索・権限検証は完了。別アプリ実行基盤との接続は未検証 |
+| 正確な対象期間 | #133。年月ラベルによる検索は実装済み。正確な期間の抽出・検索は後続 |
+| dbt | #140。Gold Mart 2テーブルを別datasetで試し、採用を判断する。全面移行は未決定 |
+| 定期実行 | #141。GitHub Actionsによる週次実行の認証・順序・運用を検討する。scheduleは未導入 |
+| 別repoのRAGアプリ | #139。Nuxt 4 + FastAPI / AWSで開発する計画。ETLとの接続方式は未決定 |
+| このrepoでのGCP版RAG | #23・#36〜#39は今回は見送り、理由を残してクローズする。将来の別構成として再開可能。既存要件・未コミット実装は保持する |
+
+GCP版RAGの実装完了や、別repoのアプリによる恒久的な置き換えを意味しない。再開時はIssueを再オープンするか、元のIssueへリンクした再計画を行う。月末の目標と検証済みの範囲は [進捗管理](docs/progress.md) に記録する。
 
 ---
 

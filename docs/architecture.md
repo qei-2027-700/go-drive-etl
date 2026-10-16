@@ -174,7 +174,7 @@ flowchart LR
 
 ## ロードマップ
 
-### Phase 1 — AI-Ready Pipeline（現在進行中）
+### Phase 1 — AI-Ready Pipeline（Markdown範囲は実装済み）
 
 Drive に置いた Notion 週次振り返り MD を取り込み、BigQuery にチャンク単位で格納するところまでを完成させる。
 
@@ -192,39 +192,36 @@ Go Worker（ETL）
 ```
 
 **Phase 1 の完了条件**
-- [ ] ファイルパーサー実装（MD を優先、将来 PDF / CSV に拡張可能な設計）
-- [ ] `ChunkRecord` を BigQuery に格納するテーブル・ロジック実装
-- [ ] `cmd/worker` エントリーポイント完成（End-to-End 動作）
-- [ ] Terraform で BQ テーブルを IaC 管理
-- [ ] `go test ./...` が通る状態を維持
+- [x] ファイルパーサー実装（MD を優先、将来 PDF / CSV に拡張可能な設計）
+- [x] `ChunkRecord` を BigQuery に格納するテーブル・ロジック実装
+- [x] `cmd/worker` エントリーポイント完成（End-to-End 動作）
+- [x] Terraform で BQ テーブルを IaC 管理
+- [x] `go test ./...` が通る状態を維持
 
 ### Chunk 層の参照方法
 
-BigQuery Sandbox は DML をサポートしないため、`chunks` は append-only にする。各行は `content_version` と `ingested_at` を持ち、空のファイル版は tombstone 行で表現する。`chunks_current` View がファイルごとの最新バージョンとチャンク重複の除去を担うため、RAG を含む後続処理はこの View を参照する。
+BigQuery Sandbox は DML をサポートしないため、`chunks` は append-only にする。各行は `content_version` と `ingested_at` を持ち、空のファイル版は tombstone 行で表現する。`chunks_current` View がファイルごとの最新バージョンとチャンク重複の除去を担うため、チャンク単位の後続処理はこの View を参照する。別アプリにはSilver経由で文書単位にまとめたGold View `reflection_documents` を提供する。
 
 ---
 
-### Phase 2 — RAG Agent（Phase 1 完了後）
+### RAGアプリとの責務分担とGCP版の再開候補
 
-BigQuery に蓄積したチャンクを Vertex AI で埋め込み、Vector Search で検索可能にした上で、週次振り返りを参照できる RAG エージェントを構築する。データは GCP 内でクローズドに処理し、個人情報を外部 API に送出しない。
+現在のアプリ計画は別repoの `retrosprint-rag`（#139）で進める。Nuxt 4のフロントエンドとFastAPIのバックエンドを一体で開発し、AWS / CDK、Bedrock、S3 Vectors、Cognitoを採用する方針である。具体的な実行基盤とETL接続方式は未決定であり、接続済みの構成として扱わない。
 
-```
-BigQuery Chunk 層
-    ↓
-Vertex AI Embeddings（GCP 内。外部 API 不使用）
-    ↓
-BigQuery Vector Search
-    ↓
-RAG Agent CLI
-    ↓
-LLMOps（評価・モデルバージョン管理）
+```text
+Google Drive → Go ETL → BigQuery Raw → Silver → Gold
+                                               ├─ Mart → BI / CSV
+                                               └─ reflection_documents
+                                                    ↓ 提供経路は検討中
+                                      別repo: Nuxt 4 + FastAPI / AWS
+                                      検索・回答・出典・会話・認証
 ```
 
-**Phase 2 の完了条件**
-- [ ] Vertex AI Embeddings でチャンク埋め込みパイプライン実装
-- [ ] BigQuery Vector Search でセマンティック検索
-- [ ] 週次振り返りを参照できる RAG Agent CLI 動作
-- [ ] RAG 評価指標（Recall / Faithfulness）の計測
+Go ETLは取得・加工・ロードとデータ提供を担う。Goldの列・型・NULLの契約、専用SAでの月検索と権限検証は完了している。AWSからの直接参照 / AWS側への取り込み / 用途別併用はアプリ側で比較し、認証・更新・削除・出典・データ転送・費用を含めて決める。通常Viewの保持期限は引き続き制約となる。
+
+将来、このrepoでGCP前提のRAGを別構成として作る可能性は残す。#23・#36〜#39は、今回は期限と優先順位によりクローズし、要件と既存コードを保持する。Vertex AI Embeddings → BigQuery Vector Search → Go RAG CLI → 品質評価という旧計画の実装完了や恒久廃止を意味しない。再開時は各Issueの理由と依存を確認し、再オープンまたは再計画する。
+
+10月末はETL / BIを説明できる状態に仕上げ、別アプリは処理と構成を示せる中間デモを目指す。詳細な目標・未検証事項は [進捗管理](progress.md) に記録する。dbtの試験導入は #140、週次自動実行の方式検討は #141で別に扱う。
 
 ---
 
@@ -254,4 +251,4 @@ BigQuery Mart 層（Gold）
 - [x] Silver 層の SQL View と Gold 層の Mart テーブルを設計・作成
 - [x] BI 接続用サービスアカウントを最小権限で Terraform 管理
 - [x] データポータルから Gold 層をクエリし、ダッシュボード 1 枚完成（README にスクリーンショット掲載）
-- [ ] Gold 層の集計結果を CSV 化し Drive `/export-reports/` へ自動デリバリー
+- [x] Worker実行時にGold層の集計結果をCSV化し、Drive `/export-reports/` へ配信（週次の自動起動は未導入）
