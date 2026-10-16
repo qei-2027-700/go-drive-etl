@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"os"
 	"sync"
 	"time"
 
@@ -53,6 +54,10 @@ func Run(
 	bqClient bq.BQClient,
 ) error {
 	markdownParser := parser.MarkdownParser{}
+	sprintPolicy, err := parser.NewSprintPolicy(os.Getenv("REFLECTION_SPRINT_FROM_MONTH"))
+	if err != nil {
+		return fmt.Errorf("REFLECTION_SPRINT_FROM_MONTH: %w", err)
+	}
 
 	files, err := repo.ListPending(ctx)
 	if err != nil {
@@ -103,6 +108,7 @@ func Run(
 
 					if file.MimeType == "text/markdown" {
 						label := parser.ExtractReflectionLabel(content)
+						period := sprintPolicy.Period(label)
 						chunks, err := markdownParser.Parse(bytes.NewReader(content))
 						if err != nil {
 							log.Printf("Markdown parse failed: fileID=%s err=%v", file.DriveFileID, err)
@@ -133,6 +139,10 @@ func Run(
 								record.ReflectionMonth = proto.String(label.Month)
 								record.ReflectionSequence = proto.Int32(label.Sequence)
 							}
+							if period != nil {
+								record.ReflectionStartDate = proto.String(period.StartDate)
+								record.ReflectionEndDate = proto.String(period.EndDate)
+							}
 							row := map[string]bigquery.Value{
 								"file_id":          record.FileId,
 								"chunk_index":      int(record.GetChunkIndex()),
@@ -147,6 +157,10 @@ func Run(
 							if record.ReflectionMonth != nil {
 								row["reflection_month"] = record.GetReflectionMonth()
 								row["reflection_sequence"] = record.GetReflectionSequence()
+							}
+							if record.ReflectionStartDate != nil && record.ReflectionEndDate != nil {
+								row["reflection_start_date"] = record.GetReflectionStartDate()
+								row["reflection_end_date"] = record.GetReflectionEndDate()
 							}
 							chunkRows = append(chunkRows, row)
 						}

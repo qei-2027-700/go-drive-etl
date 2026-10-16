@@ -16,8 +16,7 @@ import (
 	repoMock "github.com/qei-2027-700/go-drive-etl/internal/repository/mock"
 )
 
-// Column names are a proposed storage contract for #128. No document date
-// syntax is assumed: these fixtures intentionally have no target period.
+// These fixtures intentionally have no target period.
 func TestRun_ReflectionMetadataOnEveryChunk(t *testing.T) {
 	cases := []struct {
 		name      string
@@ -87,6 +86,7 @@ func TestRun_ReflectionWithoutDateKeepsPeriodNull(t *testing.T) {
 }
 
 func TestRun_ReflectionTitleLabelOnEveryChunk(t *testing.T) {
+	t.Setenv("REFLECTION_SPRINT_FROM_MONTH", "")
 	file := &domain.File{
 		DriveFileID: "synthetic-monthly-id",
 		Path:        "202609-3 synthetic-export-id.md",
@@ -106,6 +106,41 @@ func TestRun_ReflectionTitleLabelOnEveryChunk(t *testing.T) {
 				t.Errorf("chunk %d: inferred exact period %s = %v", i, field, row[field])
 			}
 		}
+	}
+}
+
+func TestRun_ReflectionSprintOnEveryChunk(t *testing.T) {
+	t.Setenv("REFLECTION_SPRINT_FROM_MONTH", "2026-09")
+	file := &domain.File{DriveFileID: "synthetic-sprint", Path: "ignored.md", MimeType: "text/markdown"}
+	content := []byte("# 202609-4\nSummary.\n\n## Actions\nNext step.")
+	rows := runReflectionAndCaptureRows(t, file, content)
+	if len(rows) != 2 {
+		t.Fatalf("chunk count = %d, want 2", len(rows))
+	}
+	for i, row := range rows {
+		if row["reflection_start_date"] != "2026-09-28" || row["reflection_end_date"] != "2026-10-04" {
+			t.Errorf("chunk %d: unexpected period: %v/%v", i, row["reflection_start_date"], row["reflection_end_date"])
+		}
+		if row["reflection_month"] != "2026-09" {
+			t.Errorf("chunk %d: title month changed", i)
+		}
+	}
+	// Reprocessing identical bytes under a corrected policy changes metadata,
+	// without changing the content version or retaining the previous period.
+	t.Setenv("REFLECTION_SPRINT_FROM_MONTH", "2026-10")
+	after := runReflectionAndCaptureRows(t, file, content)
+	for i, row := range after {
+		if row["content_version"] != rows[i]["content_version"] || row["reflection_start_date"] != nil || row["reflection_end_date"] != nil {
+			t.Errorf("chunk %d: metadata refresh failed", i)
+		}
+	}
+}
+
+func TestRun_InvalidSprintConfigurationStopsBeforeReadingFiles(t *testing.T) {
+	t.Setenv("REFLECTION_SPRINT_FROM_MONTH", "2026-13")
+	// No external dependency may be used when configuration is invalid.
+	if err := Run(context.Background(), nil, nil, nil); err == nil {
+		t.Fatal("invalid configuration should fail")
 	}
 }
 

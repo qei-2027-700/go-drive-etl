@@ -1,0 +1,74 @@
+# 月曜日を基準にする振り返り対象期間
+
+## 規約と適用範囲
+
+ユーザーと合意した新規約では、sprint は月曜日から日曜日までの7日間とする。開始する月曜日の年月に所属し、その月の第N月曜日をタイトル `YYYYMM-N` の番号とする。
+
+| 合成タイトル | 対象期間 |
+|---|---|
+| `202609-4` | 2026/9/28〜10/4 |
+| `202610-1` | 2026/10/5〜10/11 |
+| `202610-4` | 2026/10/26〜11/1 |
+| `202611-1` | 2026/11/2〜11/8 |
+
+この表は規約の計算例であり、2026年10月以前の文書を自動変換するものではない。月初の端数を切り出したり、月末で打ち切ったりしない。日本時間の暦日を扱い、取り込み日時からは対象期間を決めない。
+
+`REFLECTION_SPRINT_FROM_MONTH` に `YYYY-MM` を指定すると、そのタイトル年月以降に規約を適用する。空欄・未指定なら期間計算を無効にする。適用開始月はユーザーの指定により `2026-11` に確定した。設定例もこの値に揃えた。本番設定は変更していない。その月以降の対象文書がすべて規約に従うことを確認してから設定する。取り込み月や作成月とは比較しない。
+
+過去のタイトルには通し番号と週番号が混在するため、開始月より前には適用しない。これは #133 起票時の「年月ラベルから推測しない」という方針に対し、適用範囲を明示して合意した追加規約である。規約の適用対象であることを根拠に期間を計算する。
+
+## 取得元・不正値・保存単位
+
+取得元は、分割前の本文の最初の非空行にある `# YYYYMM-N` だけとする。ファイル名と先頭見出しが異なる場合も先頭見出しを使う。不正な見出しをファイル名で補わない。本文中の出来事の日付、Notion の子テーブルの日付、作成日時、`ingested_at` は代用しない。
+
+規約が無効、開始月より前、見出しが不正、その月に第5月曜日がない、番号が6以上、終了日がDATEの範囲を超える場合は、開始日・終了日の両方を NULL とする。年月・番号が有効なら既存の月検索には引き続き含める。設定の開始月が不正なら、ファイルを読み取る前に Worker Pool をエラーで終了する。
+
+保存単位は1文書1sprintとし、全チャンクへ同じ期間を付ける。既存の optional string 型の Protobuf には `YYYY-MM-DD`、Raw のロードには同形式の文字列、BigQuery・Silver・Gold には nullable DATE として渡す。Protobuf のフィールド番号、保存列、View の列は変更しない。
+
+日次文書や独立した複数期間をこの規約へ自動変換しない。それらの文書を対象フォルダに含める場合は本設定を有効にせず、明示的な期間と保存単位の仕様を先に追加する。本文中の複数の日付を最小値・最大値でまとめて対象期間にする処理も追加しない。
+
+## パラメータ付き期間検索
+
+`@query_start` と `@query_end` に DATE 型で日本時間の対象日を渡す。Python では `datetime.date` を使う。TIMESTAMP から日付を作る場合は `DATE(timestamp, 'Asia/Tokyo')` とする。
+
+```sql
+SELECT file_id, document_name, drive_url, content, content_version,
+       ingested_at, reflection_month, reflection_sequence,
+       reflection_start_date, reflection_end_date
+FROM `<project>.etl_gold.reflection_documents`
+WHERE @query_start <= @query_end
+  AND reflection_start_date <= @query_end
+  AND reflection_end_date >= @query_start
+ORDER BY reflection_start_date, file_id
+```
+
+両端を含み、開始日・終了日が NULL の文書は含めない。逆転した検索範囲は0件になる。タイトル年月では絞らないため、月をまたぐsprintは重なる各月の期間検索で取得できる。Silver を直接読む場合も同じ条件を使い、`file_id, chunk_index` 順で取得する。外部アプリへの列・型・NULL の契約は既存のGold Viewを維持する。
+
+## 適用・再処理・検証
+
+列と View はすでに存在するため、この実装による Terraform の変更はない。デプロイ済みのスキーマ・View が現行定義と揃っていることを確認する。確定した開始月以降の文書に新規約が適用できることを確認し、以下で再処理する。適用開始月は `2026-11` とする。
+
+```sh
+REFLECTION_SPRINT_FROM_MONTH=2026-11 REPROCESS_ALL=true go run ./cmd/worker
+```
+
+このコマンドは対象フォルダ全体を再処理する。実行前に `DRIVE_FOLDER_ID` の範囲を確認する。同じ本文を再処理した場合も新しい取り込み日時の期間メタデータを保存する。規約を無効化して再処理すれば期間はNULLになり、過去の値で補わない。設定だけを変更しても既存の保存行は更新されない。
+
+最新本文の選択、旧版・重複・空文書 tombstone の除外は既存の `chunks_current` が担う。保持期間・IAM は変更しない。既存の制約と実環境への適用手順は [Gold View](reflection-documents.md) と [アプリ用アカウント](reflection-app-access.md) の記録に従う。
+
+`go test ./...` で月またぎ・年またぎ・うるう日・不正な月と番号・適用開始月・同一本文のメタデータ更新を検証する。これらのGoテストは既存CIでも実行する。SQLは次の手順で合成データと一時テーブルを使い、本番テーブルを読み書きせず検証する。
+
+```sh
+./scripts/test-reflection-documents > /tmp/reflection-documents-test.sql
+bq query --project_id=<project> --location=asia-northeast1 \
+  --use_legacy_sql=false --maximum_bytes_billed=268435456 \
+  < /tmp/reflection-documents-test.sql
+```
+
+SQLでは最新版の期間更新・NULLへの更新・期間の両端・隣接する期間・月またぎ・日本時間の午前0時を確認する。このクラウド実行は、既存CIのGoテストとは別の検証である。デプロイ済みの実文書による検証では、上記の期間検索で対象件数を確認し、タイトルの月検索との違いを確認する。本文や識別情報はログへ残さない。
+
+## 2026-10-16 の検証結果
+
+ローカルの `go test ./...`、`go vet ./...`、`git diff --check` が成功した。合成データを実BigQueryの一時テーブルで実行し、16件のASSERTがすべて成功した。本番テーブルの読み書きは行っていない。CIには既存のGoテストに加えてSQL生成の実行を追加したが、GitHub上のCIはまだ実行していない。SQLのクラウド実行はCIへ追加していない。
+
+このセッションの検証ログは `/tmp/issue-133-go-tests.log`、`/tmp/issue-133-vet.log`、`/tmp/issue-133-bigquery-tests.log` にある。期間計算を有効にした本番再処理、実文書に対する期間検索、日次・複数期間の抽出は今回の検証に含まれない。
