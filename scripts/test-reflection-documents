@@ -34,8 +34,8 @@ def view_query(path, resource):
 def main():
     print("""-- Synthetic fixtures only; all tables are temporary.
 CREATE TEMP TABLE chunks AS
-SELECT *, CAST(NULL AS DATE) AS reflection_start_date,
-  CAST(NULL AS DATE) AS reflection_end_date
+WITH fixtures AS (
+SELECT *
 FROM UNNEST(ARRAY<STRUCT<
   file_id STRING, chunk_index INT64, content STRING, embedding_status STRING,
   content_version STRING, ingested_at TIMESTAMP, is_deleted BOOL,
@@ -54,8 +54,25 @@ FROM UNNEST(ARRAY<STRUCT<
   ('cleared', 0, 'same body', 'pending', 'v1', '2026-10-01', FALSE, 'before', 'before-url', '2026-10', 3),
   ('cleared', 0, 'same body', 'pending', 'v1', '2026-10-02', FALSE, NULL, NULL, NULL, NULL),
   ('long', 1, 'continuation', 'pending', 'v1', '2026-10-01', FALSE, 'long', 'long-url', '2026-10', 4),
-  ('long', 0, REPEAT('あ', 4000), 'pending', 'v1', '2026-10-01', FALSE, 'long', 'long-url', '2026-10', 4)
-]);
+  ('long', 0, REPEAT('あ', 4000), 'pending', 'v1', '2026-10-01', FALSE, 'long', 'long-url', '2026-10', 4),
+  ('cross-month', 0, 'cross month sprint', 'pending', 'v1', '2026-10-01', FALSE, 'cross month', 'synthetic-url', '2026-09', 4)
+]))
+-- Period metadata can change while content_version stays unchanged. Use
+-- SELECT fixtures instead of DML so this also works in BigQuery Sandbox.
+SELECT *,
+  CASE
+    WHEN file_id = 'cross-month' THEN DATE '2026-09-28'
+    WHEN file_id = 'renamed' AND ingested_at = TIMESTAMP '2026-10-03' THEN DATE '2026-10-12'
+    WHEN file_id IN ('renamed', 'cleared', 'empty') AND ingested_at = TIMESTAMP '2026-10-01' THEN DATE '2026-10-05'
+    WHEN file_id = 'renamed' THEN DATE '2026-10-05'
+  END AS reflection_start_date,
+  CASE
+    WHEN file_id = 'cross-month' THEN DATE '2026-10-04'
+    WHEN file_id = 'renamed' AND ingested_at = TIMESTAMP '2026-10-03' THEN DATE '2026-10-18'
+    WHEN file_id IN ('renamed', 'cleared', 'empty') AND ingested_at = TIMESTAMP '2026-10-01' THEN DATE '2026-10-11'
+    WHEN file_id = 'renamed' THEN DATE '2026-10-11'
+  END AS reflection_end_date
+FROM fixtures;
 """)
     for path, name in (
         ("iac/bigquery.tf", "chunks_current"),
@@ -64,11 +81,13 @@ FROM UNNEST(ARRAY<STRUCT<
     ):
         print(f"CREATE TEMP TABLE {name} AS\n{view_query(path, name)};\n")
     print(r"""
-ASSERT (SELECT COUNT(*) = 4 AND COUNT(DISTINCT file_id) = 4 FROM reflection_documents)
+ASSERT (SELECT COUNT(*) = 5 AND COUNT(DISTINCT file_id) = 5 FROM reflection_documents)
   AS 'one row per current nonempty file';
 ASSERT (SELECT content = 'first\n\nsecond' AND content_version = 'v2'
   AND document_name = 'after' AND drive_url = 'after-url'
   AND reflection_month = '2026-10' AND reflection_sequence = 2
+  AND reflection_start_date = DATE '2026-10-12'
+  AND reflection_end_date = DATE '2026-10-18'
   AND ingested_at = TIMESTAMP('2026-10-03')
   FROM reflection_documents WHERE file_id = 'renamed')
   AS 'ordered chunks, newest version, retry deduplication and metadata refresh';
@@ -80,27 +99,83 @@ ASSERT (SELECT content = 'unknown month' AND reflection_month IS NULL
   AS 'unknown month and nullable source remain in the view';
 ASSERT (SELECT document_name IS NULL AND drive_url IS NULL
   AND reflection_month IS NULL AND reflection_sequence IS NULL
+  AND reflection_start_date IS NULL AND reflection_end_date IS NULL
   FROM reflection_documents WHERE file_id = 'cleared')
   AS 'new NULL metadata does not fall back to old values';
 ASSERT (SELECT content = CONCAT(REPEAT('あ', 4000), '\n\ncontinuation')
   FROM reflection_documents WHERE file_id = 'long')
   AS 'long Unicode chunks use the documented separator';
 ASSERT (SELECT COUNT(*) = 0 FROM reflection_documents
-  WHERE reflection_start_date IS NOT NULL OR reflection_end_date IS NOT NULL)
+  WHERE file_id IN ('unknown', 'long')
+    AND (reflection_start_date IS NOT NULL OR reflection_end_date IS NOT NULL))
   AS 'unknown exact periods are not inferred';
 EXECUTE IMMEDIATE
   'SELECT COUNT(*) FROM reflection_documents WHERE reflection_month = @month'
   INTO month_count USING '2026-10' AS month;
 ASSERT month_count = 2 AS 'parameterized month search excludes unknown months';
 EXECUTE IMMEDIATE
-  'SELECT COUNT(*) FROM reflection_documents WHERE reflection_month = @month'
+  'SELECT COUNT(*) FROM reflection_documents WHERE file_id = "renamed" AND reflection_month = @month'
   INTO month_count USING '2026-09' AS month;
 ASSERT month_count = 0 AS 'obsolete versions do not match month searches';
+
+-- The predicate is the same for Silver chunks and Gold documents. Dates are
+-- inclusive calendar dates in Japan, unrelated to ingestion timestamps.
+EXECUTE IMMEDIATE '''
+  SELECT COUNT(*) FROM reflection_documents
+  WHERE @query_start <= @query_end
+    AND reflection_start_date <= @query_end
+    AND reflection_end_date >= @query_start
+''' INTO period_count
+USING DATE '2026-10-01' AS query_start, DATE '2026-10-31' AS query_end;
+ASSERT period_count = 2 AS 'October includes the September sprint crossing into October';
+EXECUTE IMMEDIATE '''
+  SELECT COUNT(*) FROM reflection_documents
+  WHERE @query_start <= @query_end
+    AND reflection_start_date <= @query_end
+    AND reflection_end_date >= @query_start
+''' INTO period_count
+USING DATE '2026-09-01' AS query_start, DATE '2026-09-30' AS query_end;
+ASSERT period_count = 1 AS 'the crossing sprint also belongs in a September period search';
+EXECUTE IMMEDIATE '''
+  SELECT COUNT(*) FROM reflection_documents
+  WHERE @query_start <= @query_end
+    AND reflection_start_date <= @query_end
+    AND reflection_end_date >= @query_start
+''' INTO period_count
+USING DATE '2026-10-04' AS query_start, DATE '2026-10-04' AS query_end;
+ASSERT period_count = 1 AS 'Sunday endpoint is inclusive';
+EXECUTE IMMEDIATE '''
+  SELECT COUNT(*) FROM reflection_documents
+  WHERE @query_start <= @query_end
+    AND reflection_start_date <= @query_end
+    AND reflection_end_date >= @query_start
+''' INTO period_count
+USING DATE '2026-10-05' AS query_start, DATE '2026-10-11' AS query_end;
+ASSERT period_count = 0 AS 'superseded periods and adjacent weeks do not match';
+EXECUTE IMMEDIATE '''
+  SELECT COUNT(*) FROM reflection_documents
+  WHERE @query_start <= @query_end
+    AND reflection_start_date <= @query_end
+    AND reflection_end_date >= @query_start
+''' INTO period_count
+USING DATE '2026-10-12' AS query_start, DATE '2026-10-12' AS query_end;
+ASSERT period_count = 1 AS 'Monday endpoint is inclusive';
+EXECUTE IMMEDIATE '''
+  SELECT COUNT(*) FROM reflection_documents
+  WHERE @query_start <= @query_end
+    AND reflection_start_date <= @query_end
+    AND reflection_end_date >= @query_start
+''' INTO period_count
+USING DATE '2026-10-18' AS query_start, DATE '2026-10-12' AS query_end;
+ASSERT period_count = 0 AS 'reversed query ranges do not match';
+ASSERT DATE(TIMESTAMP '2026-10-04 14:59:59+00', 'Asia/Tokyo') = DATE '2026-10-04'
+   AND DATE(TIMESTAMP '2026-10-04 15:00:00+00', 'Asia/Tokyo') = DATE '2026-10-05'
+  AS 'timestamp callers must use the Japanese midnight boundary';
 SELECT 'All reflection_documents assertions passed' AS result;
 """)
 
 
 if __name__ == "__main__":
     # BigQuery script variables must be declared before table statements.
-    sys.stdout.write("DECLARE month_count INT64;\n")
+    sys.stdout.write("DECLARE month_count INT64;\nDECLARE period_count INT64;\n")
     main()

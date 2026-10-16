@@ -13,7 +13,7 @@
 | `ingested_at` | TIMESTAMP | 当該文書の最新チャンク取り込み日時 |
 | `reflection_month` | STRING | タイトル由来の年月。例: `2026-10`。不明なら NULL |
 | `reflection_sequence` | INTEGER | タイトル由来の番号。不明なら NULL |
-| `reflection_start_date` / `reflection_end_date` | DATE | 正確な対象期間。現時点では NULL |
+| `reflection_start_date` / `reflection_end_date` | DATE | 規約に基づく対象期間。不明なら NULL |
 
 最新版選択・チャンクの重複除去・空文書 tombstone の除外は、上流の `chunks_current` が担う。Gold は `file_id` ごとに `chunk_index` 昇順で本文を結合する。区切りは改行2文字（`\n\n`）とする。既存パーサーは空白を正規化し、長い節を固定長で分割するため、原文との完全一致は保証しない。長い節の途中にも区切りが入る。
 
@@ -34,7 +34,7 @@ WHERE reflection_month = @month
 ORDER BY reflection_sequence, file_id
 ```
 
-この条件はタイトルの年月による分類であり、実際の対象期間の重複検索ではない。年月不明の文書は月検索から除外する。期間不明でも年月が分かれば月検索に含める。正確な対象期間と期間検索は #133 で扱い、取り込み日や月初・月末で補わない。
+この条件はタイトルの年月による分類であり、実際の対象期間の重複検索ではない。年月不明の文書は月検索から除外する。期間不明でも年月が分かれば月検索に含める。対象期間の計算と重複検索は [sprintの対象期間](reflection-sprint-periods.md) を参照する。取り込み日や月初・月末で補わない。
 
 ## 権限・料金・保持期間
 
