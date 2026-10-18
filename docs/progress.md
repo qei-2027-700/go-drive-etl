@@ -5,9 +5,10 @@
 
 ## 現在地
 
-#129 / PR #136 の文書単位 Gold View `reflection_documents` と、#137 / PR #138 のアプリ専用SAによる読み取り検証は完了・マージ済みである。専用SAで2026年10月のパラメータ付き月検索に成功し、文書数・一意数・本文・出典が各1件、期間の開始・終了がNULLであることを確認した。実行主体の一致と、更新・削除権限やBIへの影響を含む36件の権限確認も成功した。一時的な検証者権限は削除し、最終planは `No changes` だった。公開列は [振り返り文書 View](reflection-documents.md)、認証・検証主体・制約は [専用SAの検証記録](reflection-app-access.md) を参照。
+#129 / PR #136 の文書単位 Gold View `reflection_documents` と、#137 / PR #138 のアプリ専用SAによる読み取り検証は完了・マージ済みである。専用SAで2026年10月のパラメータ付き月検索に成功し、文書数・一意数・本文・出典が各1件、期間の開始・終了がNULLであることを確認した。実行主体の一致と、更新・削除権限やBIへの影響を含む36件の権限確認も成功した。一時的な検証者権限は削除し、最終planは `No changes` だった。公開列は [振り返り文書 View](retro-documents.md)、認証・検証主体・制約は [専用SAの検証記録](retro-app-access.md) を参照。
 
 外部アプリの実行基盤からの認証・接続は未検証である。専用SAのimpersonationによる成功と、別repoのアプリが接続済みであることは区別する。
+
 
 Portfolio v1 の対象である Phase 1（Markdown を対象とする AI-Ready Pipeline）と Phase 3（BI & Delivery）の実装は完了している。Google Drive からの取得、Firestore による冪等管理、Markdown のチャンク化、BigQuery へのロード、Gold Mart の CSV 配信、データポータルでの可視化までを備える。`go test ./...` は全パッケージ成功。2026-10-11 のWorker実行で3件を検出し、追加ファイルを含む15チャンクをBigQueryへロードした。Gold Martを再集計し、DriveへCSVを再出力した。データポータルの [Ingestion health](https://datastudio.google.com/u/1/reporting/4ea2ca0b-3c98-4184-93d8-e779652451e2/page/AF69F) の最新値は再読み込み後に確認する。詳細は [README のデモ](../README.md#デモ) に記録している。
 

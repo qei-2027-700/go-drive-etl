@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"os"
 	"sync"
 	"time"
 
@@ -53,6 +54,10 @@ func Run(
 	bqClient bq.BQClient,
 ) error {
 	markdownParser := parser.MarkdownParser{}
+	sprintPolicy, err := parser.NewSprintPolicy(os.Getenv("RETRO_SPRINT_FROM_MONTH"))
+	if err != nil {
+		return fmt.Errorf("RETRO_SPRINT_FROM_MONTH: %w", err)
+	}
 
 	files, err := repo.ListPending(ctx)
 	if err != nil {
@@ -102,7 +107,8 @@ func Run(
 					}
 
 					if file.MimeType == "text/markdown" {
-						label := parser.ExtractReflectionLabel(content)
+						label := parser.ExtractRetroLabel(content)
+						period := sprintPolicy.Period(label)
 						chunks, err := markdownParser.Parse(bytes.NewReader(content))
 						if err != nil {
 							log.Printf("Markdown parse failed: fileID=%s err=%v", file.DriveFileID, err)
@@ -130,8 +136,12 @@ func Run(
 								),
 							}
 							if label != nil {
-								record.ReflectionMonth = proto.String(label.Month)
-								record.ReflectionSequence = proto.Int32(label.Sequence)
+								record.RetroMonth = proto.String(label.Month)
+								record.RetroSequence = proto.Int32(label.Sequence)
+							}
+							if period != nil {
+								record.RetroStartDate = proto.String(period.StartDate)
+								record.RetroEndDate = proto.String(period.EndDate)
 							}
 							row := map[string]bigquery.Value{
 								"file_id":          record.FileId,
@@ -144,9 +154,14 @@ func Run(
 								"document_name":    record.GetDocumentName(),
 								"drive_url":        record.GetDriveUrl(),
 							}
-							if record.ReflectionMonth != nil {
-								row["reflection_month"] = record.GetReflectionMonth()
-								row["reflection_sequence"] = record.GetReflectionSequence()
+							// Rawの列名は既存データとの互換性のため維持し、Viewでretro_*を公開する。
+							if record.RetroMonth != nil {
+								row["reflection_month"] = record.GetRetroMonth()
+								row["reflection_sequence"] = record.GetRetroSequence()
+							}
+							if record.RetroStartDate != nil && record.RetroEndDate != nil {
+								row["reflection_start_date"] = record.GetRetroStartDate()
+								row["reflection_end_date"] = record.GetRetroEndDate()
 							}
 							chunkRows = append(chunkRows, row)
 						}

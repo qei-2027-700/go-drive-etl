@@ -2,14 +2,14 @@
 
 ## 設計と公開範囲
 
-Terraform の `iac/reflection_app.tf` で `reflection-documents-app@<project_id>.iam.gserviceaccount.com` を新規作成する。ETL と `looker-studio-bi` から分離し、クエリ実行プロジェクトは `var.project_id` と同じにする。既存の Gold View は通常の View のまま使う。
+Terraform の `iac/retro_app.tf` で `reflection-documents-app@<project_id>.iam.gserviceaccount.com` を新規作成する。ETL と `looker-studio-bi` から分離し、クエリ実行プロジェクトは `var.project_id` と同じにする。既存の Gold View は通常の View のまま使う。
 
 | 対象 | 付与する権限 |
 |---|---|
 | `var.project_id` | `roles/bigquery.jobUser`（ジョブ実行） |
 | Raw `chunks`、`chunks_current` | 各テーブル・View の `roles/bigquery.dataViewer` |
 | Silver `silver_chunks` | View の `roles/bigquery.dataViewer` |
-| Gold `reflection_documents` | View の `roles/bigquery.dataViewer` |
+| Gold `reflection_documents`・`retro_documents` | View の `roles/bigquery.dataViewer` |
 
 アプリは全現行文書の本文・文書名・出典・年月・期間に加え、Raw `chunks` に残る旧版・tombstone・取り込み情報も直接参照できる。月検索は公開範囲を限定するアクセス制御ではない。この範囲をアプリに公開してよいことを、適用前に確認する。`drive_files`、他の Mart、dataset 全体への権限は追加しない。
 
@@ -19,7 +19,7 @@ Gold 全体の読み取り権限を持つ BI への本文公開を避けるた�
 
 ## 認証
 
-1. ローカル検証は `gcloud auth print-access-token --impersonate-service-account=...` で短期トークンを取得する。検証者を共有 tfvars の `reflection_app_impersonator_members` に明示する。初期値は空であり、そのままでは検証者への権限を追加しない。Token Creator はこのアカウントだけに付ける。IAM Service Account Credentials API と Policy Troubleshooter API は `google_project_service.reflection_app_access` で有効化する。定義削除時の API 無効化は行わない。
+1. ローカル検証は `gcloud auth print-access-token --impersonate-service-account=...` で短期トークンを取得する。検証者を共有 tfvars の `retro_app_impersonator_members` に明示する。初期値は空であり、そのままでは検証者への権限を追加しない。Token Creator はこのアカウントだけに付ける。IAM Service Account Credentials API と Policy Troubleshooter API は `google_project_service.retro_app_access` で有効化する。定義削除時の API 無効化は行わない。
 2. Google Cloud 上の Python / FastAPI は、このアカウントを実行リソースへアタッチし、ADC で認証する。クライアントの `project` は同じクエリ実行プロジェクトを明示する。実行基盤の作成・アタッチ権限は本変更に含めない。
 3. Google Cloud 外で稼働する場合は Workload Identity Federation と当該アカウントの impersonation を使う。実行場所・外部 IdP は未確定のため、その信頼設定と実行時認証は未検証である。ローカル impersonation の成功を、実行基盤の認証成功とは扱わない。
 
@@ -40,15 +40,15 @@ Gold 全体の読み取り権限を持つ BI への本文公開を避けるた�
 2. 適用後、データがある月を指定して実行する。非標準の Gold dataset / location なら引数で指定する。
 
    ```sh
-   ./scripts/verify-reflection-app \
+   ./scripts/verify-retro-app \
      --project '<project_id>' \
      --service-account 'reflection-documents-app@<project_id>.iam.gserviceaccount.com' \
      --month '2026-10'
    ```
 
-   スクリプトは明示したアカウントで BigQuery REST API の dry run と本クエリを実行する。`reflection_month = @month` は STRING パラメータで渡す。文書単位の値を返さず、件数のみを取得する。選択月の文書数が1以上で、一意数・空でない本文数・空でない出典 URL 数が一致すれば終了コード0となる。本文・出典の内容自体の正しさは判定しない。既存データで出典が NULL の場合も、不足を見落とさないよう終了コード1にする。
+   スクリプトは明示したアカウントで BigQuery REST API の dry run と本クエリを実行する。`retro_month = @month` は STRING パラメータで渡す。文書単位の値を返さず、件数のみを取得する。選択月の文書数が1以上で、一意数・空でない本文数・空でない出典 URL 数が一致すれば終了コード0となる。本文・出典の内容自体の正しさは判定しない。既存データで出典が NULL の場合も、不足を見落とさないよう終了コード1にする。
 
-   月内の文書名 NULL 数・期間開始/終了 NULL 数と、View 全体の年月 NULL 数も出力する。年月不明の文書は月検索から除外され、期間不明でも年月が一致すれば含まれる。NULL 数は観測結果として扱い、将来の期間メタデータ追加を失敗としない。NULL の選択ロジック自体は `scripts/test-reflection-documents` の合成データで検証する。
+   月内の文書名 NULL 数・期間開始/終了 NULL 数と、View 全体の年月 NULL 数も出力する。年月不明の文書は月検索から除外され、期間不明でも年月が一致すれば含まれる。NULL 数は観測結果として扱い、将来の期間メタデータ追加を失敗としない。NULL の選択ロジック自体は `scripts/test-retro-documents` の合成データで検証する。
 
 3. 管理者の認証で Policy Troubleshooter を使い、対象アプリの実効権限を確認する。実データへ DML・削除を実行しない。例は Raw `chunks` の更新権限である。
 
@@ -73,7 +73,7 @@ Gold 全体の読み取り権限を持つ BI への本文公開を避けるた�
 
 適用直後の短期トークン取得は `iam.serviceAccounts.getAccessToken` の権限エラーになった。SA の IAM 設定を読み取り、検証者への付与を確認した。その後、IAM の再適用なしで再試行すると成功したため、権限の反映待ちと整合する。
 
-`./scripts/verify-reflection-app` で `@month = '2026-10'` の dry run と本クエリが成功した。クエリ費用上限は256 MiBである。別の `SELECT SESSION_USER()` でも、実行主体がアプリ専用アカウントに一致した。ユーザー自身のデータ参照権限による成功とは区別できている。
+`./scripts/verify-retro-app` で `@month = '2026-10'` の dry run と本クエリが成功した。クエリ費用上限は256 MiBである。別の `SELECT SESSION_USER()` でも、実行主体がアプリ専用アカウントに一致した。ユーザー自身のデータ参照権限による成功とは区別できている。
 
 | 集計 | 件数 |
 |---|---|
@@ -102,4 +102,4 @@ Policy Troubleshooter v3 を検証者の認証で呼び、以下の36件がす�
 
 plan には既存 Gold View の `labels = {}` と `resource_tags = {}` の差異の通知があったが、変更アクションはなかった。共有 tfvars の既存の未宣言変数 `scheduled_query_service_account_email` の警告は残っている。本変更では共有設定を変更していない。
 
-Terraform の静的検証、検証スクリプトのオフラインテスト7件、`git diff --check` は成功した。オフラインテストは `python3 scripts/test-verify-reflection-app` で再実行でき、CI にも追加した。文書の lint も成功した。詳細ログはローカルの `/tmp/issue-137-*.log` と `/tmp/issue-137-effective-iam*.json` に保存し、実文書本文・識別情報・認証情報は記録していない。
+Terraform の静的検証、検証スクリプトのオフラインテスト7件、`git diff --check` は成功した。オフラインテストは `python3 scripts/test-verify-retro-app` で再実行でき、CI にも追加した。文書の lint も成功した。詳細ログはローカルの `/tmp/issue-137-*.log` と `/tmp/issue-137-effective-iam*.json` に保存し、実文書本文・識別情報・認証情報は記録していない。

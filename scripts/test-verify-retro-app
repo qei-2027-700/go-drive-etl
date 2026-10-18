@@ -1,0 +1,110 @@
+#!/usr/bin/env python3
+"""Offline checks for identity enforcement, parameter binding and log privacy."""
+import argparse
+import contextlib
+import importlib.machinery
+import importlib.util
+import io
+import json
+from pathlib import Path
+import unittest
+from unittest.mock import patch
+
+loader = importlib.machinery.SourceFileLoader(
+    "verify_app", str(Path(__file__).with_name("verify-retro-app"))
+)
+module = importlib.util.module_from_spec(importlib.util.spec_from_loader(loader.name, loader))
+loader.exec_module(module)
+
+
+class VerificationTest(unittest.TestCase):
+    def setUp(self):
+        self.args = argparse.Namespace(
+            project="test-project", gold_dataset="etl_gold", location="asia-northeast1",
+            service_account="reflection-documents-app@test-project.iam.gserviceaccount.com",
+            month="2026-10", maximum_bytes_billed=268435456,
+        )
+
+    def response(self, counts):
+        return {"jobComplete": True,
+                "schema": {"fields": [{"name": key} for key in module.METRICS]},
+                "rows": [{"f": [{"v": str(count)} for count in counts]}]}
+
+    def test_impersonation_is_explicit(self):
+        with patch.object(module.subprocess, "run") as run:
+            run.return_value = argparse.Namespace(returncode=0, stdout="secret-token\n")
+            self.assertEqual(module.access_token(self.args.service_account), "secret-token")
+            self.assertIn("--impersonate-service-account=" + self.args.service_account,
+                          run.call_args.args[0])
+            self.assertTrue(run.call_args.kwargs["capture_output"])
+
+    def test_dry_run_parameter_and_counts_only(self):
+        with patch.object(module, "access_token", return_value="secret-token"), patch.object(
+            module, "request", side_effect=[{}, self.response([2, 2, 2, 2, 0, 2, 2, 1])]
+        ) as request, contextlib.redirect_stdout(io.StringIO()) as output:
+            self.assertEqual(module.verify(self.args), 0)
+            dry = request.call_args_list[0].args[2]["configuration"]
+            self.assertTrue(dry["dryRun"])
+            self.assertEqual(dry["query"]["queryParameters"][0]["parameterValue"],
+                             {"value": "2026-10"})
+            self.assertIn("retro_month = @month", dry["query"]["query"])
+            self.assertIn("etl_gold.retro_documents", dry["query"]["query"])
+            self.assertEqual(dry["query"]["maximumBytesBilled"], "268435456")
+            self.assertNotIn("secret-token", output.getvalue())
+            self.assertTrue(json.loads(output.getvalue())["passed"])
+
+    def test_missing_content_or_source_duplicate_or_empty_fails(self):
+        for counts in ([1, 1, 0, 1, 0, 1, 1, 0], [1, 1, 1, 0, 0, 1, 1, 0],
+                       [2, 1, 2, 2, 0, 2, 2, 0], [0] * 8):
+            with patch.object(module, "access_token", return_value="token"), patch.object(
+                module, "request", side_effect=[{}, self.response(counts)]
+            ), contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(module.verify(self.args), 1)
+
+    def test_legacy_entry_point_keeps_deployed_view(self):
+        with patch.object(module.sys, "argv", ["scripts/verify-reflection-app"]), patch.object(
+            module, "access_token", return_value="token"
+        ), patch.object(module, "request", side_effect=[{}, self.response([1, 1, 1, 1, 0, 1, 1, 0])]) as request, contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(module.verify(self.args), 0)
+            sql = request.call_args_list[0].args[2]["configuration"]["query"]["query"]
+            self.assertIn("etl_gold.reflection_documents", sql)
+            self.assertIn("reflection_month AS retro_month", sql)
+
+    def test_async_query_is_polled(self):
+        pending = {"jobComplete": False, "jobReference": {"jobId": "job_123"}}
+        with patch.object(module, "access_token", return_value="token"), patch.object(
+            module, "request", side_effect=[{}, pending, self.response([1, 1, 1, 1, 0, 1, 1, 0])]
+        ) as request, contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(module.verify(self.args), 0)
+            self.assertIn("queries/job_123?location=asia-northeast1", request.call_args.args[1])
+
+    def test_unexpected_document_response_is_not_printed(self):
+        response = self.response(["private-document"] + [1] * 7)
+        with patch.object(module, "access_token", return_value="token"), patch.object(
+            module, "request", side_effect=[{}, response]
+        ), contextlib.redirect_stdout(io.StringIO()) as output:
+            with self.assertRaises(ValueError):
+                module.verify(self.args)
+            self.assertEqual(output.getvalue(), "")
+
+    def test_no_fallback_identity(self):
+        self.args.service_account = "user@example.com"
+        with patch.object(module, "access_token") as token:
+            with self.assertRaises(ValueError):
+                module.verify(self.args)
+            token.assert_not_called()
+
+    def test_failures_do_not_leak_raw_values(self):
+        argv = ["verify", "--project", self.args.project,
+                "--service-account", self.args.service_account, "--month", self.args.month]
+        for failure in (RuntimeError("private-document"),
+                        ValueError("private-url"), KeyError("private-id")):
+            with patch.object(module.sys, "argv", argv), patch.object(
+                module, "access_token", side_effect=failure
+            ), contextlib.redirect_stderr(io.StringIO()) as output:
+                self.assertEqual(module.main(), 1)
+                self.assertNotIn("private-", output.getvalue())
+
+
+if __name__ == "__main__":
+    unittest.main()

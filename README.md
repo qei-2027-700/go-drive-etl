@@ -118,7 +118,7 @@ for i := 0; i < 5; i++ {
 - Google Docs / Sheets / Slides など `md5Checksum` が空のファイルは比較できないため、検出するたびに `pending` に戻して再処理する
 - ステータスは `pending → processing → done / failed` と遷移し、失敗したファイルだけを次回拾い直せる
 
-BigQuery の `chunks` は BigQuery Sandbox でも使える append-only テーブルである。`content_version`（内容の SHA-256）と `ingested_at` を各チャンクに保持し、再実行で物理的な重複が生じても `chunks_current` View が最新バージョンだけを重複なく公開する。チャンク単位の後続処理は `chunks` ではなく、この View を参照する。別アプリの文書取得には、Silver 経由で文書単位にまとめた Gold View `reflection_documents` を使う。
+BigQuery の `chunks` は BigQuery Sandbox でも使える append-only テーブルである。`content_version`（内容の SHA-256）と `ingested_at` を各チャンクに保持し、再実行で物理的な重複が生じても `chunks_current` View が最新バージョンだけを重複なく公開する。チャンク単位の後続処理は `chunks` ではなく、この View を参照する。別アプリの文書取得には、Silver 経由で文書単位にまとめた Gold View `retro_documents` を使う。
 
 実装は [internal/repository/firestore_repository.go](internal/repository/firestore_repository.go)。PostgreSQL 側のスキーマは [migrations/001_init.sql](migrations/001_init.sql)。
 
@@ -326,7 +326,7 @@ BigQuery のデータセット / テーブルに加え、Firestore データベ�
 
 データポータル（旧称: Looker Studio）用の読み取り専用サービスアカウントと、その Gold dataset に限定した IAM も Terraform で作成する。組織固有のデータポータル service agent と、データソースの編集を許可する principal を `terraform.tfvars` に設定する手順は [データポータル dashboard](docs/looker-studio.md) を参照。
 
-外部チャットアプリ向けの文書単位の Gold View と月検索は、[振り返り文書 View](docs/reflection-documents.md) を参照。
+外部チャットアプリ向けの文書単位の Gold View と月検索は、[振り返り文書 View](docs/retro-documents.md) を参照。
 
 ### 5. Gold Mart の手動更新
 

@@ -9,7 +9,7 @@ import (
 
 // Exercise the same metadata-change contract against both state backends.
 // These tests use the existing opt-in database helpers; no production DB is used.
-func TestReflectionMetadataUpsert(t *testing.T) {
+func TestRetroMetadataUpsert(t *testing.T) {
 	backends := []struct {
 		name string
 		new  func(*testing.T) FileRepo
@@ -25,7 +25,7 @@ func TestReflectionMetadataUpsert(t *testing.T) {
 	}{
 		{"unchanged completed document", domain.SyncStatusDone, "memo.md", false},
 		{"renamed completed document", domain.SyncStatusDone, "renamed.md", true},
-		{"date corrected in filename", domain.SyncStatusDone, "2026-10-06_reflection.md", true},
+		{"date corrected in filename", domain.SyncStatusDone, "2026-10-06_retro.md", true},
 		{"renamed pending document", domain.SyncStatusPending, "renamed.md", true},
 		{"unchanged failed document", domain.SyncStatusFailed, "memo.md", true},
 	}
@@ -37,7 +37,7 @@ func TestReflectionMetadataUpsert(t *testing.T) {
 					ctx := context.Background()
 					original := testFile()
 					if tc.name == "date corrected in filename" {
-						original.Path = "2026-10-05_reflection.md"
+						original.Path = "2026-10-05_retro.md"
 					}
 					if err := repo.Upsert(ctx, original); err != nil {
 						t.Fatalf("initial Upsert: %v", err)

@@ -48,7 +48,7 @@ Git worktree や Orca で作成した作業ディレクトリには、Git 管理
 
 main の場所は Git の worktree 一覧から取得する。値は画面へ表示せずコピーし、コピー先の権限を所有者だけが読み書きできる `0600` にする。既存の `.env` は上書きしない。置き換える場合のみ `--force` を付ける。このスクリプトは Worker の起動や再処理を行わない。
 
-振り返りの年月ラベルの保存形式、スキーマの適用、既存ファイルの強制再処理は [振り返りの年月ラベル](reflection-metadata.md) を参照。
+振り返りの年月ラベルの保存形式、スキーマの適用、既存ファイルの強制再処理は [振り返りの年月ラベル](retro-metadata.md) を参照。
 
 ```env
 # BigQuery
@@ -141,3 +141,9 @@ POSTGRES_TEST_DSN=postgres://app:password@localhost:5432/app_db?sslmode=disable 
 ```
 
 **このテストは `files` テーブルを空にする。** アプリが読む `POSTGRES_DSN` ではなく専用の変数を使うのは、接続先を取り違えて本番相当のデータを消さないようにするため。
+
+## テストファイルの配置
+
+実装とテストの対応を追いやすくするため、原則として `xxx.go` に対するテストを `xxx_test.go` にまとめる。例えば、`worker_pool.go` の振り返り処理も `worker_pool_test.go` で検証する。これはGoの必須条件ではなく、このリポジトリでの配置方針とする。
+
+自動生成ファイルは例外とし、`record.pb.go` に対する手書きテストは `record_test.go` に置く。生成ファイルを直接編集せず、元の `proto/record.proto` を修正して再生成する。

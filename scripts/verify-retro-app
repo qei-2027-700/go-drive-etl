@@ -1,0 +1,148 @@
+#!/usr/bin/env python3
+"""Verify deployed document access via explicit impersonation; emit counts only."""
+
+import argparse
+import json
+from pathlib import Path
+import re
+import subprocess
+import sys
+import urllib.request
+import uuid
+from urllib.error import URLError
+
+
+METRICS = (
+    "documents", "unique_documents", "nonempty_content", "with_source",
+    "null_document_name", "null_start", "null_end", "null_month_documents",
+)
+
+
+def access_token(service_account):
+    result = subprocess.run([
+        "gcloud", "auth", "print-access-token",
+        f"--impersonate-service-account={service_account}", "--quiet",
+    ], capture_output=True, text=True, timeout=30)
+    if result.returncode or not result.stdout.strip():
+        raise RuntimeError("Impersonation failed; raw output suppressed")
+    return result.stdout.strip()
+
+
+def request(token, path, payload=None):
+    req = urllib.request.Request(
+        "https://bigquery.googleapis.com/bigquery/v2/" + path,
+        data=json.dumps(payload).encode() if payload is not None else None,
+        headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+    )
+    with urllib.request.urlopen(req, timeout=60) as response:
+        return json.load(response)
+
+
+def verify(args):
+    for identifier in (args.project, args.gold_dataset, args.location):
+        if not re.fullmatch(r"[A-Za-z0-9_-]+", identifier):
+            raise ValueError("Invalid project or dataset identifier")
+    expected = f"reflection-documents-app@{args.project}.iam.gserviceaccount.com"
+    if args.service_account != expected:
+        raise ValueError("Use the Terraform-managed application service account")
+    if not re.fullmatch(r"\d{4}-(0[1-9]|1[0-2])", args.month):
+        raise ValueError("Month must be YYYY-MM")
+    if args.maximum_bytes_billed <= 0:
+        raise ValueError("Maximum bytes billed must be positive")
+
+    # The old entry point remains usable before the new view is deployed.
+    legacy = Path(sys.argv[0]).name == "verify-reflection-app"
+    if legacy:
+        source = f"""SELECT file_id, document_name, drive_url, content,
+          reflection_month AS retro_month,
+          reflection_start_date AS retro_start_date,
+          reflection_end_date AS retro_end_date
+          FROM `{args.project}.{args.gold_dataset}.reflection_documents`"""
+    else:
+        source = f"SELECT * FROM `{args.project}.{args.gold_dataset}.retro_documents`"
+    # The query evaluates content/source inside BigQuery; no document values leave it.
+    query = f"""
+WITH documents AS (
+  {source}
+), monthly AS (
+  SELECT * FROM documents WHERE retro_month = @month
+)
+SELECT COUNT(*) AS documents, COUNT(DISTINCT file_id) AS unique_documents,
+  COUNTIF(LENGTH(TRIM(content)) > 0) AS nonempty_content,
+  COUNTIF(LENGTH(TRIM(drive_url)) > 0) AS with_source,
+  COUNTIF(document_name IS NULL) AS null_document_name,
+  COUNTIF(retro_start_date IS NULL) AS null_start,
+  COUNTIF(retro_end_date IS NULL) AS null_end,
+  (SELECT COUNT(*) FROM documents WHERE retro_month IS NULL) AS null_month_documents
+FROM monthly
+"""
+    token = access_token(args.service_account)
+    parameters = [{"name": "month", "parameterType": {"type": "STRING"},
+                   "parameterValue": {"value": args.month}}]
+    configuration = {
+        "query": query, "useLegacySql": False, "parameterMode": "NAMED",
+        "queryParameters": parameters,
+        "maximumBytesBilled": str(args.maximum_bytes_billed),
+    }
+    request(token, f"projects/{args.project}/jobs", {
+        "jobReference": {"projectId": args.project, "location": args.location,
+                         "jobId": "retro_access_dry_run_" + uuid.uuid4().hex},
+        "configuration": {"dryRun": True, "query": configuration},
+    })
+    result = request(token, f"projects/{args.project}/queries", {
+        **configuration, "location": args.location, "timeoutMs": 10000,
+    })
+    # Bound polling; never forward API errors or returned document values.
+    for _ in range(6):
+        if result.get("jobComplete"):
+            break
+        job = result["jobReference"]
+        path = (f"projects/{args.project}/queries/{job['jobId']}"
+                f"?location={args.location}&timeoutMs=10000")
+        result = request(token, path)
+    if not result.get("jobComplete") or result.get("errors"):
+        raise RuntimeError("Query incomplete or failed; raw output suppressed")
+    fields = result["schema"]["fields"]
+    rows = result.get("rows", [])
+    if ([field["name"] for field in fields] != list(METRICS)
+            or len(rows) != 1 or len(rows[0]["f"]) != len(METRICS)):
+        raise ValueError("Unexpected aggregate response; raw output suppressed")
+    row = dict(zip(METRICS, (cell["v"] for cell in rows[0]["f"])))
+    counts = {}
+    for key in METRICS:
+        value = str(row[key])
+        if not re.fullmatch(r"[0-9]+", value):
+            raise ValueError("Invalid aggregate count; raw output suppressed")
+        counts[key] = int(value)
+    passed = (
+        counts["documents"] > 0
+        and counts["documents"] == counts["unique_documents"]
+        == counts["nonempty_content"] == counts["with_source"]
+    )
+    print(json.dumps({
+        "service_account": args.service_account, "project": args.project,
+        "month": args.month, "maximum_bytes_billed": args.maximum_bytes_billed,
+        "counts": counts, "passed": passed,
+    }, sort_keys=True))
+    return 0 if passed else 1
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--project", required=True)
+    parser.add_argument("--service-account", required=True)
+    parser.add_argument("--month", required=True)
+    parser.add_argument("--gold-dataset", default="etl_gold")
+    parser.add_argument("--location", default="asia-northeast1")
+    parser.add_argument("--maximum-bytes-billed", type=int, default=268435456)
+    args = parser.parse_args()
+    try:
+        return verify(args)
+    except (RuntimeError, ValueError, OSError, TypeError, KeyError, IndexError,
+            subprocess.TimeoutExpired, URLError):
+        print("Verification failed; raw command output suppressed. Check authentication, IAM, location and cost limit.", file=sys.stderr)
+        return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())
