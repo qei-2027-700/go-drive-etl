@@ -53,8 +53,8 @@ jobs:
           go-version-file: "go.mod"
           cache: true
 
-      - name: Test reflection access verifier (offline)
-        run: python3 scripts/test-verify-reflection-app
+      - name: Test retro access verifier (offline)
+        run: python3 scripts/test-verify-retro-app
 
       - name: go test with coverage
         run: |

@@ -30,6 +30,10 @@ resource "google_bigquery_table" "silver_chunks" {
         drive_url,
         reflection_month,
         reflection_sequence,
+        retro_start_date,
+        retro_end_date,
+        retro_month,
+        retro_sequence,
         DATE(ingested_at, "Asia/Tokyo") AS ingested_date,
         embedding_status,
         embedding_status = "completed" AS is_embedded,
@@ -41,7 +45,8 @@ resource "google_bigquery_table" "silver_chunks" {
   }
 }
 
-resource "google_bigquery_table" "reflection_documents" {
+// Preserve the deployed view and its schema for existing consumers.
+resource "google_bigquery_table" "retro_documents_legacy" {
   depends_on = [google_bigquery_table.silver_chunks]
 
   dataset_id          = google_bigquery_dataset.gold.dataset_id
@@ -85,6 +90,26 @@ resource "google_bigquery_table" "reflection_documents" {
       FROM documents
     SQL
 
+    use_legacy_sql = false
+  }
+}
+
+resource "google_bigquery_table" "retro_documents" {
+  depends_on = [google_bigquery_table.retro_documents_legacy]
+
+  dataset_id          = google_bigquery_dataset.gold.dataset_id
+  table_id            = "retro_documents"
+  deletion_protection = true
+
+  view {
+    query          = <<-SQL
+      SELECT file_id, document_name, drive_url, content, content_version, ingested_at,
+        reflection_month AS retro_month,
+        reflection_sequence AS retro_sequence,
+        reflection_start_date AS retro_start_date,
+        reflection_end_date AS retro_end_date
+      FROM `${var.project_id}.${google_bigquery_dataset.gold.dataset_id}.reflection_documents`
+    SQL
     use_legacy_sql = false
   }
 }

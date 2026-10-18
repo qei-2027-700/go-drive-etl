@@ -13,7 +13,7 @@
 
 この表は規約の計算例であり、2026年10月以前の文書を自動変換するものではない。月初の端数を切り出したり、月末で打ち切ったりしない。日本時間の暦日を扱い、取り込み日時からは対象期間を決めない。
 
-`REFLECTION_SPRINT_FROM_MONTH` に `YYYY-MM` を指定すると、そのタイトル年月以降に規約を適用する。空欄・未指定なら期間計算を無効にする。適用開始月はユーザーの指定により `2026-11` に確定した。設定例もこの値に揃えた。本番設定は変更していない。その月以降の対象文書がすべて規約に従うことを確認してから設定する。取り込み月や作成月とは比較しない。
+`RETRO_SPRINT_FROM_MONTH` に `YYYY-MM` を指定すると、そのタイトル年月以降に規約を適用する。空欄・未指定なら期間計算を無効にする。適用開始月はユーザーの指定により `2026-11` に確定した。設定例もこの値に揃えた。本番設定は変更していない。その月以降の対象文書がすべて規約に従うことを確認してから設定する。取り込み月や作成月とは比較しない。
 
 2026-10-16に対象フォルダのMarkdown 3文書と、作成元のNotionテーブル・既定テンプレートを調べたが、文書全体の正確な開始日・終了日を確定する根拠は確認できなかった。本文の年を含まない日付やNotionの子テーブルの日付が、文書全体の対象期間を表すかは未確認である。実文書本文・識別情報・認証情報は記録しない。
 
@@ -25,7 +25,7 @@
 
 規約が無効、開始月より前、見出しが不正、その月に第5月曜日がない、番号が6以上、終了日がDATEの範囲を超える場合は、開始日・終了日の両方を NULL とする。年月・番号が有効なら既存の月検索には引き続き含める。設定の開始月が不正なら、ファイルを読み取る前に Worker Pool をエラーで終了する。
 
-保存単位は1文書1sprintとし、全チャンクへ同じ期間を付ける。既存の optional string 型の Protobuf には `YYYY-MM-DD`、Raw のロードには同形式の文字列、BigQuery・Silver・Gold には nullable DATE として渡す。Protobuf のフィールド番号、保存列、View の列は変更しない。
+保存単位は1文書1sprintとし、全チャンクへ同じ期間を付ける。既存の optional string 型の Protobuf には `YYYY-MM-DD`、Raw のロードには同形式の文字列、BigQuery・Silver・Gold には nullable DATE として渡す。Protobuf のフィールド番号とRawの保存列を維持し、Viewにはretro名を追加する。移行時の扱いは [命名の互換性](retro-metadata.md#retroへの命名変更と互換性) を参照する。
 
 日次文書や独立した複数期間をこの規約へ自動変換しない。それらの文書を対象フォルダに含める場合は本設定を有効にせず、明示的な期間と保存単位の仕様を先に追加する。本文中の複数の日付を最小値・最大値でまとめて対象期間にする処理も追加しない。
 
@@ -35,33 +35,33 @@
 
 ```sql
 SELECT file_id, document_name, drive_url, content, content_version,
-       ingested_at, reflection_month, reflection_sequence,
-       reflection_start_date, reflection_end_date
-FROM `<project>.etl_gold.reflection_documents`
+       ingested_at, retro_month, retro_sequence,
+       retro_start_date, retro_end_date
+FROM `<project>.etl_gold.retro_documents`
 WHERE @query_start <= @query_end
-  AND reflection_start_date <= @query_end
-  AND reflection_end_date >= @query_start
-ORDER BY reflection_start_date, file_id
+  AND retro_start_date <= @query_end
+  AND retro_end_date >= @query_start
+ORDER BY retro_start_date, file_id
 ```
 
 両端を含み、開始日・終了日が NULL の文書は含めない。逆転した検索範囲は0件になる。タイトル年月では絞らないため、月をまたぐsprintは重なる各月の期間検索で取得できる。Silver を直接読む場合も同じ条件を使い、`file_id, chunk_index` 順で取得する。外部アプリへの列・型・NULL の契約は既存のGold Viewを維持する。
 
 ## 適用・再処理・検証
 
-列と View はすでに存在するため、この実装による Terraform の変更はない。デプロイ済みのスキーマ・View が現行定義と揃っていることを確認する。確定した開始月以降の文書に新規約が適用できることを確認し、以下で再処理する。適用開始月は `2026-11` とする。
+対象期間の保存列は既存列を使う。retro名の公開列・Viewへの移行では、[命名の互換性](retro-metadata.md#retroへの命名変更と互換性) の手順に従ってTerraformを適用する。デプロイ済みのスキーマ・View が現行定義と揃っていることを確認する。確定した開始月以降の文書に新規約が適用できることを確認し、以下で再処理する。適用開始月は `2026-11` とする。
 
 ```sh
-REFLECTION_SPRINT_FROM_MONTH=2026-11 REPROCESS_ALL=true go run ./cmd/worker
+RETRO_SPRINT_FROM_MONTH=2026-11 REPROCESS_ALL=true go run ./cmd/worker
 ```
 
 このコマンドは対象フォルダ全体を再処理する。実行前に `DRIVE_FOLDER_ID` の範囲を確認する。同じ本文を再処理した場合も新しい取り込み日時の期間メタデータを保存する。規約を無効化して再処理すれば期間はNULLになり、過去の値で補わない。設定だけを変更しても既存の保存行は更新されない。
 
-最新本文の選択、旧版・重複・空文書 tombstone の除外は既存の `chunks_current` が担う。保持期間・IAM は変更しない。既存の制約と実環境への適用手順は [Gold View](reflection-documents.md) と [アプリ用アカウント](reflection-app-access.md) の記録に従う。
+最新本文の選択、旧版・重複・空文書 tombstone の除外は既存の `chunks_current` が担う。保持期間・IAM は変更しない。既存の制約と実環境への適用手順は [Gold View](retro-documents.md) と [アプリ用アカウント](retro-app-access.md) の記録に従う。
 
 `go test ./...` で月またぎ・年またぎ・うるう日・不正な月と番号・適用開始月・同一本文のメタデータ更新を検証する。これらのGoテストは既存CIでも実行する。SQLは次の手順で合成データと一時テーブルを使い、本番テーブルを読み書きせず検証する。
 
 ```sh
-./scripts/test-reflection-documents > /tmp/reflection-documents-test.sql
+./scripts/test-retro-documents > /tmp/reflection-documents-test.sql
 bq query --project_id=<project> --location=asia-northeast1 \
   --use_legacy_sql=false --maximum_bytes_billed=268435456 \
   < /tmp/reflection-documents-test.sql

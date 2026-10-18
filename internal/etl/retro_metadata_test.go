@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"fmt"
+	"os"
 	"strings"
 	"testing"
 
@@ -17,26 +18,26 @@ import (
 )
 
 // These fixtures intentionally have no target period.
-func TestRun_ReflectionMetadataOnEveryChunk(t *testing.T) {
+func TestRun_RetroMetadataOnEveryChunk(t *testing.T) {
 	cases := []struct {
 		name      string
 		content   string
 		wantCount int
 		deleted   bool
 	}{
-		{"heading sections", "# Reflection\nSummary.\n\n## Actions\nNext step.", 2, false},
-		{"long section", "# Reflection\n" + strings.Repeat("a", 4100), 2, false},
+		{"heading sections", "# Retro\nSummary.\n\n## Actions\nNext step.", 2, false},
+		{"long section", "# Retro\n" + strings.Repeat("a", 4100), 2, false},
 		{"empty document tombstone", " \n\t", 1, true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			file := &domain.File{
-				DriveFileID: "synthetic-reflection-id",
-				Path:        "reflection.md",
+				DriveFileID: "synthetic-retro-id",
+				Path:        "retro.md",
 				Checksum:    "synthetic-checksum",
 				MimeType:    "text/markdown",
 			}
-			rows := runReflectionAndCaptureRows(t, file, []byte(tc.content))
+			rows := runRetroAndCaptureRows(t, file, []byte(tc.content))
 			if len(rows) != tc.wantCount {
 				t.Fatalf("chunk count = %d, want %d", len(rows), tc.wantCount)
 			}
@@ -61,13 +62,13 @@ func TestRun_ReflectionMetadataOnEveryChunk(t *testing.T) {
 	}
 }
 
-func TestRun_ReflectionWithoutDateKeepsPeriodNull(t *testing.T) {
+func TestRun_RetroWithoutDateKeepsPeriodNull(t *testing.T) {
 	file := &domain.File{
 		DriveFileID: "synthetic-undated-id",
-		Path:        "undated-reflection.md",
+		Path:        "undated-retro.md",
 		MimeType:    "text/markdown",
 	}
-	rows := runReflectionAndCaptureRows(t, file, []byte("# Reflection\nSummary.\n\n## Actions\nNext step."))
+	rows := runRetroAndCaptureRows(t, file, []byte("# Retro\nSummary.\n\n## Actions\nNext step."))
 	if len(rows) != 2 {
 		t.Fatalf("chunk count = %d, want 2", len(rows))
 	}
@@ -85,15 +86,15 @@ func TestRun_ReflectionWithoutDateKeepsPeriodNull(t *testing.T) {
 	}
 }
 
-func TestRun_ReflectionTitleLabelOnEveryChunk(t *testing.T) {
-	t.Setenv("REFLECTION_SPRINT_FROM_MONTH", "")
+func TestRun_RetroTitleLabelOnEveryChunk(t *testing.T) {
+	t.Setenv("RETRO_SPRINT_FROM_MONTH", "")
 	file := &domain.File{
 		DriveFileID: "synthetic-monthly-id",
 		Path:        "202609-3 synthetic-export-id.md",
 		MimeType:    "text/markdown",
 	}
 	// The first heading, rather than the exported filename, supplies the label.
-	rows := runReflectionAndCaptureRows(t, file, []byte("# 202610-1\nSummary.\n\n## Actions\nNext step."))
+	rows := runRetroAndCaptureRows(t, file, []byte("# 202610-1\nSummary.\n\n## Actions\nNext step."))
 	if len(rows) != 2 {
 		t.Fatalf("chunk count = %d, want 2", len(rows))
 	}
@@ -109,15 +110,15 @@ func TestRun_ReflectionTitleLabelOnEveryChunk(t *testing.T) {
 	}
 }
 
-// TestRun_ReflectionSprintOnEveryChunk は、分割後の全チャンクに同じ対象期間が付くことと、
+// TestRun_RetroSprintOnEveryChunk は、分割後の全チャンクに同じ対象期間が付くことと、
 // 適用開始月を変えて同じ本文を再処理したときに、対象外となった期間が未設定になることを確認する。
-func TestRun_ReflectionSprintOnEveryChunk(t *testing.T) {
+func TestRun_RetroSprintOnEveryChunk(t *testing.T) {
 	// 月またぎを確認するため、このテスト内だけ適用開始月を2026年9月にする。
 	// 本番用の設定例（2026年11月から）を変更するものではない。
-	t.Setenv("REFLECTION_SPRINT_FROM_MONTH", "2026-09")
+	t.Setenv("RETRO_SPRINT_FROM_MONTH", "2026-09")
 	file := &domain.File{DriveFileID: "synthetic-sprint", Path: "ignored.md", MimeType: "text/markdown"}
 	content := []byte("# 202609-4\nSummary.\n\n## Actions\nNext step.")
-	rows := runReflectionAndCaptureRows(t, file, content)
+	rows := runRetroAndCaptureRows(t, file, content)
 	if len(rows) != 2 {
 		t.Fatalf("chunk count = %d, want 2", len(rows))
 	}
@@ -134,8 +135,8 @@ func TestRun_ReflectionSprintOnEveryChunk(t *testing.T) {
 	// 適用開始月を10月へ変更すると、この9月の文書は期間計算の対象外になる。
 	// 同じ本文なのでcontent_versionは変わらず、再出力する行の開始日・終了日は未設定になる。
 	// 保存済みの旧行が検索から除外されることは、別途BigQueryの合成データで検証する。
-	t.Setenv("REFLECTION_SPRINT_FROM_MONTH", "2026-10")
-	after := runReflectionAndCaptureRows(t, file, content)
+	t.Setenv("RETRO_SPRINT_FROM_MONTH", "2026-10")
+	after := runRetroAndCaptureRows(t, file, content)
 	for i, row := range after {
 		if row["content_version"] != rows[i]["content_version"] || row["reflection_start_date"] != nil || row["reflection_end_date"] != nil {
 			t.Errorf("chunk %d: metadata refresh failed", i)
@@ -144,25 +145,60 @@ func TestRun_ReflectionSprintOnEveryChunk(t *testing.T) {
 }
 
 func TestRun_InvalidSprintConfigurationStopsBeforeReadingFiles(t *testing.T) {
-	t.Setenv("REFLECTION_SPRINT_FROM_MONTH", "2026-13")
+	t.Setenv("RETRO_SPRINT_FROM_MONTH", "2026-13")
 	// No external dependency may be used when configuration is invalid.
 	if err := Run(context.Background(), nil, nil, nil); err == nil {
 		t.Fatal("invalid configuration should fail")
 	}
 }
 
-func TestRun_ReflectionRenamePreservesContentVersionAndUpdatesSource(t *testing.T) {
-	content := []byte("# Reflection\nSummary.\n\n## Actions\nNext step.")
+// 旧名だけを設定した実行環境も動作し、新名を設定した場合は空欄も含めて優先する。
+func TestRun_RetroSprintEnvironmentCompatibility(t *testing.T) {
+	for _, tc := range []struct {
+		name, legacy, current string
+		configured, dated     bool
+	}{
+		{"legacy only", "2026-09", "", false, true},
+		{"new setting wins", "2026-10", "2026-09", true, true},
+		{"explicit empty disables legacy", "2026-09", "", true, false},
+		{"old invalid value ignored when new is valid", "invalid", "2026-09", true, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("REFLECTION_SPRINT_FROM_MONTH", tc.legacy)
+			t.Setenv("RETRO_SPRINT_FROM_MONTH", tc.current)
+			if !tc.configured {
+				if err := os.Unsetenv("RETRO_SPRINT_FROM_MONTH"); err != nil {
+					t.Fatal(err)
+				}
+			}
+			file := &domain.File{DriveFileID: "synthetic-compat", Path: "retro.md", MimeType: "text/markdown"}
+			rows := runRetroAndCaptureRows(t, file, []byte("# 202609-4\nSummary."))
+			if len(rows) != 1 {
+				t.Fatalf("got %d rows, want one", len(rows))
+			}
+			if tc.dated {
+				if rows[0]["reflection_start_date"] != "2026-09-28" || rows[0]["reflection_end_date"] != "2026-10-04" {
+					t.Fatalf("legacy Raw storage contract changed: %v", rows[0])
+				}
+			} else if rows[0]["reflection_start_date"] != nil || rows[0]["reflection_end_date"] != nil {
+				t.Fatal("explicit empty new setting must disable the old setting")
+			}
+		})
+	}
+}
+
+func TestRun_RetroRenamePreservesContentVersionAndUpdatesSource(t *testing.T) {
+	content := []byte("# Retro\nSummary.\n\n## Actions\nNext step.")
 	file := &domain.File{
-		DriveFileID: "synthetic-reflection-id",
-		Path:        "reflection.md",
+		DriveFileID: "synthetic-retro-id",
+		Path:        "retro.md",
 		Checksum:    "unchanged-checksum",
 		MimeType:    "text/markdown",
 	}
-	before := runReflectionAndCaptureRows(t, file, content)
+	before := runRetroAndCaptureRows(t, file, content)
 	renamed := *file
-	renamed.Path = "corrected-reflection.md"
-	after := runReflectionAndCaptureRows(t, &renamed, content)
+	renamed.Path = "corrected-retro.md"
+	after := runRetroAndCaptureRows(t, &renamed, content)
 	if len(before) != 2 || len(after) != 2 {
 		t.Fatalf("chunk counts = %d/%d, want 2/2", len(before), len(after))
 	}
@@ -181,7 +217,7 @@ func TestRun_ReflectionRenamePreservesContentVersionAndUpdatesSource(t *testing.
 	}
 }
 
-func runReflectionAndCaptureRows(t *testing.T, file *domain.File, content []byte) []map[string]bigquery.Value {
+func runRetroAndCaptureRows(t *testing.T, file *domain.File, content []byte) []map[string]bigquery.Value {
 	t.Helper()
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()

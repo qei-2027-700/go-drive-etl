@@ -19,7 +19,7 @@ func TestSprintPolicyPeriods(t *testing.T) {
 		{"leap day", "2024-01", "# 202402-4", "2024-02-26", "2024-03-03"},
 		{"missing fifth Monday", "2026-01", "# 202610-5", "", ""},
 		{"sequence is a legacy counter", "2026-01", "# 202610-12", "", ""},
-		{"no title", "2026-01", "# Reflection\n# 202610-1", "", ""},
+		{"no title", "2026-01", "# Retro\n# 202610-1", "", ""},
 		{"bad month", "2026-01", "# 202613-1", "", ""},
 		{"date exceeds BigQuery range", "9999-01", "# 999912-4", "", ""},
 	}
@@ -29,7 +29,7 @@ func TestSprintPolicyPeriods(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			got := policy.Period(ExtractReflectionLabel([]byte(tc.title)))
+			got := policy.Period(ExtractRetroLabel([]byte(tc.title)))
 			if tc.start == "" {
 				if got != nil {
 					t.Fatalf("period = %+v, want nil", got)
@@ -56,7 +56,7 @@ func TestSprintPolicyRejectsInvalidLabels(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, label := range []*ReflectionLabel{
+	for _, label := range []*RetroLabel{
 		nil,
 		{Month: "2026-13", Sequence: 1},
 		{Month: "2026-1", Sequence: 1},

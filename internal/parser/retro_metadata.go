@@ -8,14 +8,14 @@ import (
 	"time"
 )
 
-// ReflectionLabel describes the title's month and sequence, not an exact period.
-type ReflectionLabel struct {
+// RetroLabel describes the title's month and sequence, not an exact period.
+type RetroLabel struct {
 	Month    string
 	Sequence int32
 }
 
-// ReflectionPeriod contains inclusive Japanese calendar dates, not timestamps.
-type ReflectionPeriod struct {
+// RetroPeriod contains inclusive Japanese calendar dates, not timestamps.
+type RetroPeriod struct {
 	StartDate string
 	EndDate   string
 }
@@ -39,7 +39,7 @@ func NewSprintPolicy(fromMonth string) (SprintPolicy, error) {
 
 // Period maps the Nth Monday of the title month to Monday through Sunday.
 // An absent fifth Monday is invalid; it must not roll into the following month.
-func (p SprintPolicy) Period(label *ReflectionLabel) *ReflectionPeriod {
+func (p SprintPolicy) Period(label *RetroLabel) *RetroPeriod {
 	if p.fromMonth == "" || label == nil || label.Month < p.fromMonth || label.Sequence < 1 || label.Sequence > 5 {
 		return nil
 	}
@@ -55,21 +55,21 @@ func (p SprintPolicy) Period(label *ReflectionLabel) *ReflectionPeriod {
 	if start.Month() != month.Month() || end.Year() > 9999 {
 		return nil
 	}
-	return &ReflectionPeriod{StartDate: start.Format(time.DateOnly), EndDate: end.Format(time.DateOnly)}
+	return &RetroPeriod{StartDate: start.Format(time.DateOnly), EndDate: end.Format(time.DateOnly)}
 }
 
-var reflectionHeading = regexp.MustCompile(`^# ([0-9]{4})(0[1-9]|1[0-2])-([1-9][0-9]*)$`)
+var retroHeading = regexp.MustCompile(`^# ([0-9]{4})(0[1-9]|1[0-2])-([1-9][0-9]*)$`)
 
-// ExtractReflectionLabel reads a YYYYMM-N H1 on the first nonblank line.
+// ExtractRetroLabel reads a YYYYMM-N H1 on the first nonblank line.
 // Unrecognized titles remain undated; filenames and body dates are not fallbacks.
-func ExtractReflectionLabel(content []byte) *ReflectionLabel {
+func ExtractRetroLabel(content []byte) *RetroLabel {
 	text := strings.TrimPrefix(string(content), "\ufeff")
 	for _, line := range strings.Split(text, "\n") {
 		if strings.TrimSpace(line) == "" {
 			continue
 		}
 		// Keep leading indentation: an indented code block is not a title.
-		match := reflectionHeading.FindStringSubmatch(strings.TrimRight(line, " \t\r"))
+		match := retroHeading.FindStringSubmatch(strings.TrimRight(line, " \t\r"))
 		if match == nil || match[1] == "0000" {
 			return nil
 		}
@@ -77,7 +77,7 @@ func ExtractReflectionLabel(content []byte) *ReflectionLabel {
 		if err != nil {
 			return nil
 		}
-		return &ReflectionLabel{Month: match[1] + "-" + match[2], Sequence: int32(sequence)}
+		return &RetroLabel{Month: match[1] + "-" + match[2], Sequence: int32(sequence)}
 	}
 	return nil
 }

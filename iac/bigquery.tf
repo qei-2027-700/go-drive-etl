@@ -156,7 +156,11 @@ resource "google_bigquery_table" "chunks_current" {
       SELECT chunks.file_id, chunks.chunk_index, chunks.content, chunks.embedding_status,
         chunks.content_version, chunks.ingested_at,
         chunks.reflection_start_date, chunks.reflection_end_date, chunks.document_name, chunks.drive_url,
-        chunks.reflection_month, chunks.reflection_sequence
+        chunks.reflection_month, chunks.reflection_sequence,
+        chunks.reflection_start_date AS retro_start_date,
+        chunks.reflection_end_date AS retro_end_date,
+        chunks.reflection_month AS retro_month,
+        chunks.reflection_sequence AS retro_sequence
       FROM deduplicated_chunks AS chunks
       INNER JOIN latest_versions USING (file_id, content_version)
       WHERE COALESCE(chunks.is_deleted, FALSE) = FALSE

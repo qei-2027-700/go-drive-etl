@@ -30,13 +30,13 @@ message ChunkRecord {
   int32 chunk_index = 2;
   string content = 3;
   string embedding_status = 4;
-  optional string reflection_start_date = 5;
-  optional string reflection_end_date = 6;
+  optional string retro_start_date = 5 [json_name = "reflectionStartDate"];
+  optional string retro_end_date = 6 [json_name = "reflectionEndDate"];
   optional string document_name = 7;
   optional string drive_url = 8;
   optional string content_version = 9;
   google.protobuf.Timestamp ingested_at = 10;
   optional bool is_deleted = 11;
-  optional string reflection_month = 12;
-  optional int32 reflection_sequence = 13;
+  optional string retro_month = 12 [json_name = "reflectionMonth"];
+  optional int32 retro_sequence = 13 [json_name = "reflectionSequence"];
 }

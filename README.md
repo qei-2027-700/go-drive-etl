@@ -326,7 +326,7 @@ BigQuery のデータセット / テーブルに加え、Firestore データベ�
 
 データポータル（旧称: Looker Studio）用の読み取り専用サービスアカウントと、その Gold dataset に限定した IAM も Terraform で作成する。組織固有のデータポータル service agent と、データソースの編集を許可する principal を `terraform.tfvars` に設定する手順は [データポータル dashboard](docs/looker-studio.md) を参照。
 
-外部チャットアプリ向けの文書単位の Gold View と月検索は、[振り返り文書 View](docs/reflection-documents.md) を参照。
+外部チャットアプリ向けの文書単位の Gold View と月検索は、[振り返り文書 View](docs/retro-documents.md) を参照。
 
 ### 5. Gold Mart の手動更新
 

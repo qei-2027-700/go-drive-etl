@@ -39,8 +39,19 @@ variable "looker_studio_data_source_editor_members" {
   default     = []
 }
 
+variable "retro_app_impersonator_members" {
+  description = "Principals allowed to impersonate only the retro application account for verification. No keys are created."
+  type        = set(string)
+  default     = []
+
+  validation {
+    condition     = alltrue([for member in var.retro_app_impersonator_members : can(regex("^(user|group|serviceAccount):[^[:space:]]+@[^[:space:]]+$", member))])
+    error_message = "Use explicit user:, group: or serviceAccount: principals."
+  }
+}
+
 variable "reflection_app_impersonator_members" {
-  description = "Principals allowed to impersonate only the reflection application account for verification. No keys are created."
+  description = "Compatibility alias for retro_app_impersonator_members. Existing verifier grants remain effective."
   type        = set(string)
   default     = []
 

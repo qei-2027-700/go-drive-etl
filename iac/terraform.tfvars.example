@@ -11,4 +11,4 @@ gold_dataset_id       = "etl_gold"
 # looker_studio_data_source_editor_members = ["group:bi-admins@example.com"]
 
 # Optional: local verifier, scoped to the application service account only.
-# reflection_app_impersonator_members = ["user:verifier@example.com"]
+# retro_app_impersonator_members = ["user:verifier@example.com"]

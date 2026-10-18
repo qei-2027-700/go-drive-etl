@@ -2,7 +2,7 @@ package parser
 
 import "testing"
 
-func TestExtractReflectionLabel(t *testing.T) {
+func TestExtractRetroLabel(t *testing.T) {
 	cases := []struct {
 		name     string
 		content  string
@@ -17,8 +17,8 @@ func TestExtractReflectionLabel(t *testing.T) {
 		{"indented code is not a heading", "    # 202610-1\nSummary.", "", 0},
 		{"tab-indented code is not a heading", "\t# 202610-1\nSummary.", "", 0},
 		{"no heading", "202610-1\nSummary.", "", 0},
-		{"unrelated title", "# Reflection\n## 202610-1", "", 0},
-		{"body date is not a title", "# Reflection\n# 202610-1", "", 0},
+		{"unrelated title", "# Retro\n## 202610-1", "", 0},
+		{"body date is not a title", "# Retro\n# 202610-1", "", 0},
 		{"subheading", "## 202610-1", "", 0},
 		{"invalid month", "# 202613-1", "", 0},
 		{"zero month", "# 202600-1", "", 0},
@@ -31,7 +31,7 @@ func TestExtractReflectionLabel(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := ExtractReflectionLabel([]byte(tc.content))
+			got := ExtractRetroLabel([]byte(tc.content))
 			if tc.month == "" {
 				if got != nil {
 					t.Fatalf("label = %+v, want nil", got)
