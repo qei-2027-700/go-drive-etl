@@ -56,9 +56,6 @@ jobs:
       - name: Test reflection access verifier (offline)
         run: python3 scripts/test-verify-reflection-app
 
-      - name: Generate synthetic reflection SQL
-        run: python3 scripts/test-reflection-documents > "$RUNNER_TEMP/reflection-documents-test.sql"
-
       - name: go test with coverage
         run: |
           go test -cover ./... | tee coverage.txt
