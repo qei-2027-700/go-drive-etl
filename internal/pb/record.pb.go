@@ -169,15 +169,15 @@ type ChunkRecord struct {
 	ChunkIndex      int32                  `protobuf:"varint,2,opt,name=chunk_index,json=chunkIndex,proto3" json:"chunk_index,omitempty"`
 	Content         string                 `protobuf:"bytes,3,opt,name=content,proto3" json:"content,omitempty"`
 	EmbeddingStatus string                 `protobuf:"bytes,4,opt,name=embedding_status,json=embeddingStatus,proto3" json:"embedding_status,omitempty"`
-	RetroStartDate  *string                `protobuf:"bytes,5,opt,name=retro_start_date,json=reflectionStartDate,proto3,oneof" json:"retro_start_date,omitempty"`
-	RetroEndDate    *string                `protobuf:"bytes,6,opt,name=retro_end_date,json=reflectionEndDate,proto3,oneof" json:"retro_end_date,omitempty"`
+	RetroStartDate  *string                `protobuf:"bytes,5,opt,name=retro_start_date,json=retroStartDate,proto3,oneof" json:"retro_start_date,omitempty"`
+	RetroEndDate    *string                `protobuf:"bytes,6,opt,name=retro_end_date,json=retroEndDate,proto3,oneof" json:"retro_end_date,omitempty"`
 	DocumentName    *string                `protobuf:"bytes,7,opt,name=document_name,json=documentName,proto3,oneof" json:"document_name,omitempty"`
 	DriveUrl        *string                `protobuf:"bytes,8,opt,name=drive_url,json=driveUrl,proto3,oneof" json:"drive_url,omitempty"`
 	ContentVersion  *string                `protobuf:"bytes,9,opt,name=content_version,json=contentVersion,proto3,oneof" json:"content_version,omitempty"`
 	IngestedAt      *timestamppb.Timestamp `protobuf:"bytes,10,opt,name=ingested_at,json=ingestedAt,proto3" json:"ingested_at,omitempty"`
 	IsDeleted       *bool                  `protobuf:"varint,11,opt,name=is_deleted,json=isDeleted,proto3,oneof" json:"is_deleted,omitempty"`
-	RetroMonth      *string                `protobuf:"bytes,12,opt,name=retro_month,json=reflectionMonth,proto3,oneof" json:"retro_month,omitempty"`
-	RetroSequence   *int32                 `protobuf:"varint,13,opt,name=retro_sequence,json=reflectionSequence,proto3,oneof" json:"retro_sequence,omitempty"`
+	RetroMonth      *string                `protobuf:"bytes,12,opt,name=retro_month,json=retroMonth,proto3,oneof" json:"retro_month,omitempty"`
+	RetroSequence   *int32                 `protobuf:"varint,13,opt,name=retro_sequence,json=retroSequence,proto3,oneof" json:"retro_sequence,omitempty"`
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache
 }
@@ -317,15 +317,15 @@ const file_proto_record_proto_rawDesc = "" +
 	"\vsync_status\x18\x05 \x01(\x0e2\x12.record.SyncStatusR\n" +
 	"syncStatus\x129\n" +
 	"\n" +
-	"updated_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\"\xb5\x05\n" +
+	"updated_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\"\xa1\x05\n" +
 	"\vChunkRecord\x12\x17\n" +
 	"\afile_id\x18\x01 \x01(\tR\x06fileId\x12\x1f\n" +
 	"\vchunk_index\x18\x02 \x01(\x05R\n" +
 	"chunkIndex\x12\x18\n" +
 	"\acontent\x18\x03 \x01(\tR\acontent\x12)\n" +
-	"\x10embedding_status\x18\x04 \x01(\tR\x0fembeddingStatus\x122\n" +
-	"\x10retro_start_date\x18\x05 \x01(\tH\x00R\x13reflectionStartDate\x88\x01\x01\x12.\n" +
-	"\x0eretro_end_date\x18\x06 \x01(\tH\x01R\x11reflectionEndDate\x88\x01\x01\x12(\n" +
+	"\x10embedding_status\x18\x04 \x01(\tR\x0fembeddingStatus\x12-\n" +
+	"\x10retro_start_date\x18\x05 \x01(\tH\x00R\x0eretroStartDate\x88\x01\x01\x12)\n" +
+	"\x0eretro_end_date\x18\x06 \x01(\tH\x01R\fretroEndDate\x88\x01\x01\x12(\n" +
 	"\rdocument_name\x18\a \x01(\tH\x02R\fdocumentName\x88\x01\x01\x12 \n" +
 	"\tdrive_url\x18\b \x01(\tH\x03R\bdriveUrl\x88\x01\x01\x12,\n" +
 	"\x0fcontent_version\x18\t \x01(\tH\x04R\x0econtentVersion\x88\x01\x01\x12;\n" +
@@ -333,9 +333,10 @@ const file_proto_record_proto_rawDesc = "" +
 	" \x01(\v2\x1a.google.protobuf.TimestampR\n" +
 	"ingestedAt\x12\"\n" +
 	"\n" +
-	"is_deleted\x18\v \x01(\bH\x05R\tisDeleted\x88\x01\x01\x12)\n" +
-	"\vretro_month\x18\f \x01(\tH\x06R\x0freflectionMonth\x88\x01\x01\x12/\n" +
-	"\x0eretro_sequence\x18\r \x01(\x05H\aR\x12reflectionSequence\x88\x01\x01B\x13\n" +
+	"is_deleted\x18\v \x01(\bH\x05R\tisDeleted\x88\x01\x01\x12$\n" +
+	"\vretro_month\x18\f \x01(\tH\x06R\n" +
+	"retroMonth\x88\x01\x01\x12*\n" +
+	"\x0eretro_sequence\x18\r \x01(\x05H\aR\rretroSequence\x88\x01\x01B\x13\n" +
 	"\x11_retro_start_dateB\x11\n" +
 	"\x0f_retro_end_dateB\x10\n" +
 	"\x0e_document_nameB\f\n" +

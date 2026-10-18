@@ -74,7 +74,7 @@ Go の合成データによるテストと Terraform の静的検証は、実 Bi
 
 | 対象 | 新しい名前と既存利用側の扱い |
 |---|---|
-| Go・Protobuf | `RetroLabel`・`RetroPeriod`・`ExtractRetroLabel`、`retro_*` フィールド。Protobufの番号と既存のcamelCaseのProtoJSON名は維持する |
+| Go・Protobuf | `RetroLabel`・`RetroPeriod`・`ExtractRetroLabel`、`retro_*` フィールド。Protobufのフィールド番号・型・optionalは維持する。現在使っていないProtoJSONの旧名は固定しない |
 | Rawの保存列 | 既存の `reflection_*` を維持し、過去データも新しい取り込みも同じ列へ保存する |
 | `chunks_current`・Silver | 旧 `reflection_*` に加え、同じ値を持つ `retro_*` 列を公開する |
 | Gold | 新しい `retro_documents` と従来の `reflection_documents` を併存させる。本文・期間・最新版の選択は同じで、新Viewは列名だけを変える |
@@ -90,7 +90,7 @@ Terraformを適用してから利用側のクエリを `retro_documents` / `retr
 
 ### 2026-10-18の命名変更の検証
 
-`go test ./...`、`go vet ./...`、`go build ./...`、検証スクリプトのオフラインテスト8件、Terraformの静的検証が成功した。Protobufの既存のフィールド番号・ProtoJSON名、旧環境変数、新設定の優先順位を合成データで確認した。Firestore・PostgreSQLの接続を必要とする既存テストは、実DBを用意しない通常のGoテストではスキップされるため、今回の名前変更で実DBを使う検証を行ったという意味ではない。
+`go test ./...`、`go vet ./...`、`go build ./...`、検証スクリプトのオフラインテスト8件、Terraformの静的検証が成功した。Protobufの既存のフィールド番号・型・optional、旧環境変数、新設定の優先順位を確認した。Firestore・PostgreSQLの接続を必要とする既存テストは、実DBを用意しない通常のGoテストではスキップされるため、今回の名前変更で実DBを使う検証を行ったという意味ではない。
 
 実BigQueryの一時テーブルで20件のASSERTが成功した。既存Raw列の新しい別名、Silverの新旧列、新旧Gold Viewの本文・期間・NULLが一致することを確認した。本番データは読み書きしていない。
 
