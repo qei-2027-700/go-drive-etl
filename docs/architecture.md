@@ -200,7 +200,7 @@ Go Worker（ETL）
 
 ### Chunk 層の参照方法
 
-BigQuery Sandbox は DML をサポートしないため、`chunks` は append-only にする。各行は `content_version` と `ingested_at` を持ち、空のファイル版は tombstone 行で表現する。`chunks_current` View がファイルごとの最新バージョンとチャンク重複の除去を担うため、チャンク単位の後続処理はこの View を参照する。別アプリにはSilver経由で文書単位にまとめたGold View `reflection_documents` を提供する。
+BigQuery Sandbox は DML をサポートしないため、`chunks` は append-only にする。各行は `content_version` と `ingested_at` を持ち、空のファイル版は tombstone 行で表現する。`chunks_current` View がファイルごとの最新バージョンとチャンク重複の除去を担うため、チャンク単位の後続処理はこの View を参照する。別アプリにはSilver経由で文書単位にまとめたGold View `retro_documents` を提供する。
 
 ---
 
@@ -211,7 +211,7 @@ BigQuery Sandbox は DML をサポートしないため、`chunks` は append-on
 ```text
 Google Drive → Go ETL → BigQuery Raw → Silver → Gold
                                                ├─ Mart → BI / CSV
-                                               └─ reflection_documents
+                                               └─ retro_documents
                                                     ↓ 提供経路は検討中
                                       別repo: Nuxt 4 + FastAPI / AWS
                                       検索・回答・出典・会話・認証
