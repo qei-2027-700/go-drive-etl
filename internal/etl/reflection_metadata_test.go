@@ -109,7 +109,11 @@ func TestRun_ReflectionTitleLabelOnEveryChunk(t *testing.T) {
 	}
 }
 
+// TestRun_ReflectionSprintOnEveryChunk は、分割後の全チャンクに同じ対象期間が付くことと、
+// 適用開始月を変えて同じ本文を再処理したときに、対象外となった期間が未設定になることを確認する。
 func TestRun_ReflectionSprintOnEveryChunk(t *testing.T) {
+	// 月またぎを確認するため、このテスト内だけ適用開始月を2026年9月にする。
+	// 本番用の設定例（2026年11月から）を変更するものではない。
 	t.Setenv("REFLECTION_SPRINT_FROM_MONTH", "2026-09")
 	file := &domain.File{DriveFileID: "synthetic-sprint", Path: "ignored.md", MimeType: "text/markdown"}
 	content := []byte("# 202609-4\nSummary.\n\n## Actions\nNext step.")
@@ -117,6 +121,8 @@ func TestRun_ReflectionSprintOnEveryChunk(t *testing.T) {
 	if len(rows) != 2 {
 		t.Fatalf("chunk count = %d, want 2", len(rows))
 	}
+	// 202609-4 は9月の第4月曜日（9/28）から10/4まで。
+	// 2つのチャンクが同じ期間を持ち、タイトルの年月は9月のままであることを確認する。
 	for i, row := range rows {
 		if row["reflection_start_date"] != "2026-09-28" || row["reflection_end_date"] != "2026-10-04" {
 			t.Errorf("chunk %d: unexpected period: %v/%v", i, row["reflection_start_date"], row["reflection_end_date"])
@@ -125,8 +131,9 @@ func TestRun_ReflectionSprintOnEveryChunk(t *testing.T) {
 			t.Errorf("chunk %d: title month changed", i)
 		}
 	}
-	// Reprocessing identical bytes under a corrected policy changes metadata,
-	// without changing the content version or retaining the previous period.
+	// 適用開始月を10月へ変更すると、この9月の文書は期間計算の対象外になる。
+	// 同じ本文なのでcontent_versionは変わらず、再出力する行の開始日・終了日は未設定になる。
+	// 保存済みの旧行が検索から除外されることは、別途BigQueryの合成データで検証する。
 	t.Setenv("REFLECTION_SPRINT_FROM_MONTH", "2026-10")
 	after := runReflectionAndCaptureRows(t, file, content)
 	for i, row := range after {
