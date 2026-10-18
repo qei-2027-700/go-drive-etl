@@ -1,4 +1,5 @@
-# Keep deployed resource identities while renaming Terraform addresses.
+# Terraformの管理上の名前を旧名から新名へ引き継ぐ。
+# 同じリソースを使い続けるための指定であり、この指定自体はデータ移動や再作成を指示しない。
 
 moved {
   from = google_bigquery_table.reflection_documents

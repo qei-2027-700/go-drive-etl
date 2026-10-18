@@ -10,5 +10,6 @@ gold_dataset_id       = "etl_gold"
 # looker_studio_service_agent_member = "serviceAccount:service-org-YOUR_ORG_ID@gcp-sa-datastudio.iam.gserviceaccount.com"
 # looker_studio_data_source_editor_members = ["group:bi-admins@example.com"]
 
-# Optional: local verifier, scoped to the application service account only.
+# ローカルでアクセス検証を行う人を指定する任意設定。
+# アプリ専用サービスアカウントの短期トークンを発行する権限を付与する。
 # retro_app_impersonator_members = ["user:verifier@example.com"]
