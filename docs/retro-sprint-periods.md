@@ -25,7 +25,7 @@
 
 規約が無効、開始月より前、見出しが不正、その月に第5月曜日がない、番号が6以上、終了日がDATEの範囲を超える場合は、開始日・終了日の両方を NULL とする。年月・番号が有効なら既存の月検索には引き続き含める。設定の開始月が不正なら、ファイルを読み取る前に Worker Pool をエラーで終了する。
 
-保存単位は1文書1sprintとし、全チャンクへ同じ期間を付ける。既存の optional string 型の Protobuf には `YYYY-MM-DD`、Raw のロードには同形式の文字列、BigQuery・Silver・Gold には nullable DATE として渡す。Protobuf のフィールド番号とRawの保存列を維持し、Viewにはretro名を追加する。移行時の扱いは [命名の互換性](retro-metadata.md#retroへの命名変更と互換性) を参照する。
+保存単位は1文書1sprintとし、全チャンクへ同じ期間を付ける。既存の optional string 型の Protobuf には `YYYY-MM-DD`、Raw のロードには同形式の文字列、BigQuery・Silver・Gold には nullable DATE として渡す。Protobuf のフィールド番号・型・optional は維持する。Raw から View まで対象期間の列名を `retro_*` に統一する。既存列の切替は [Raw列の移行手順](raw-retro-column-migration.md) を参照する。
 
 日次文書や独立した複数期間をこの規約へ自動変換しない。それらの文書を対象フォルダに含める場合は本設定を有効にせず、明示的な期間と保存単位の仕様を先に追加する。本文中の複数の日付を最小値・最大値でまとめて対象期間にする処理も追加しない。
 
@@ -48,7 +48,7 @@ ORDER BY retro_start_date, file_id
 
 ## 適用・再処理・検証
 
-対象期間の保存列は既存列を使う。retro名の公開列・Viewへの移行では、[命名の互換性](retro-metadata.md#retroへの命名変更と互換性) の手順に従ってTerraformを適用する。適用開始月は `2026-11` とし、それ以降の対象文書が新規約に従うことを確認する。
+既存環境では [Raw列の移行手順](raw-retro-column-migration.md) に従い、SQL の列リネームと Terraform の適用を分ける。適用開始月は `2026-11` とし、それ以降の対象文書が新規約に従うことを確認する。
 
 ### 通常の取り込み
 
@@ -73,10 +73,10 @@ RETRO_SPRINT_FROM_MONTH=2026-11 REPROCESS_ALL=true go run ./cmd/worker
 `go test ./...` で月またぎ・年またぎ・うるう日・不正な月と番号・適用開始月・同一本文のメタデータ更新を検証する。これらのGoテストは既存CIでも実行する。SQLは次の手順で合成データと一時テーブルを使い、本番テーブルを読み書きせず検証する。
 
 ```sh
-./scripts/test-retro-documents > /tmp/reflection-documents-test.sql
+./scripts/test-retro-documents > /tmp/retro-documents-test.sql
 bq query --project_id=<project> --location=asia-northeast1 \
-  --use_legacy_sql=false --maximum_bytes_billed=268435456 \
-  < /tmp/reflection-documents-test.sql
+  --use_legacy_sql=false --maximum_bytes_billed=1073741824 \
+  < /tmp/retro-documents-test.sql
 ```
 
 SQLでは最新版の期間更新・NULLへの更新・期間の両端・隣接する期間・月またぎ・日本時間の午前0時を確認する。このクラウド実行は、既存CIのGoテストとは別の検証である。デプロイ済みの実文書による検証では、上記の期間検索で対象件数を確認し、タイトルの月検索との違いを確認する。本文や識別情報はログへ残さない。

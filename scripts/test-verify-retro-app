@@ -61,15 +61,6 @@ class VerificationTest(unittest.TestCase):
             ), contextlib.redirect_stdout(io.StringIO()):
                 self.assertEqual(module.verify(self.args), 1)
 
-    def test_legacy_entry_point_keeps_deployed_view(self):
-        with patch.object(module.sys, "argv", ["scripts/verify-reflection-app"]), patch.object(
-            module, "access_token", return_value="token"
-        ), patch.object(module, "request", side_effect=[{}, self.response([1, 1, 1, 1, 0, 1, 1, 0])]) as request, contextlib.redirect_stdout(io.StringIO()):
-            self.assertEqual(module.verify(self.args), 0)
-            sql = request.call_args_list[0].args[2]["configuration"]["query"]["query"]
-            self.assertIn("etl_gold.reflection_documents", sql)
-            self.assertIn("reflection_month AS retro_month", sql)
-
     def test_async_query_is_polled(self):
         pending = {"jobComplete": False, "jobReference": {"jobId": "job_123"}}
         with patch.object(module, "access_token", return_value="token"), patch.object(

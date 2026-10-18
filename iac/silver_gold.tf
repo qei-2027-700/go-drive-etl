@@ -24,12 +24,8 @@ resource "google_bigquery_table" "silver_chunks" {
         content,
         content_version,
         ingested_at,
-        reflection_start_date,
-        reflection_end_date,
         document_name,
         drive_url,
-        reflection_month,
-        reflection_sequence,
         retro_start_date,
         retro_end_date,
         retro_month,
@@ -45,12 +41,11 @@ resource "google_bigquery_table" "silver_chunks" {
   }
 }
 
-// Preserve the deployed view and its schema for existing consumers.
-resource "google_bigquery_table" "retro_documents_legacy" {
+resource "google_bigquery_table" "retro_documents" {
   depends_on = [google_bigquery_table.silver_chunks]
 
   dataset_id          = google_bigquery_dataset.gold.dataset_id
-  table_id            = "reflection_documents"
+  table_id            = "retro_documents"
   deletion_protection = true
 
   view {
@@ -65,10 +60,10 @@ resource "google_bigquery_table" "retro_documents_legacy" {
               document_name,
               drive_url,
               content_version,
-              reflection_month,
-              reflection_sequence,
-              reflection_start_date,
-              reflection_end_date
+              retro_month,
+              retro_sequence,
+              retro_start_date,
+              retro_end_date
             )
             ORDER BY ingested_at DESC, chunk_index ASC
             LIMIT 1
@@ -83,33 +78,13 @@ resource "google_bigquery_table" "retro_documents_legacy" {
         content,
         metadata.content_version,
         ingested_at,
-        metadata.reflection_month,
-        metadata.reflection_sequence,
-        metadata.reflection_start_date,
-        metadata.reflection_end_date
+        metadata.retro_month,
+        metadata.retro_sequence,
+        metadata.retro_start_date,
+        metadata.retro_end_date
       FROM documents
     SQL
 
-    use_legacy_sql = false
-  }
-}
-
-resource "google_bigquery_table" "retro_documents" {
-  depends_on = [google_bigquery_table.retro_documents_legacy]
-
-  dataset_id          = google_bigquery_dataset.gold.dataset_id
-  table_id            = "retro_documents"
-  deletion_protection = true
-
-  view {
-    query          = <<-SQL
-      SELECT file_id, document_name, drive_url, content, content_version, ingested_at,
-        reflection_month AS retro_month,
-        reflection_sequence AS retro_sequence,
-        reflection_start_date AS retro_start_date,
-        reflection_end_date AS retro_end_date
-      FROM `${var.project_id}.${google_bigquery_dataset.gold.dataset_id}.reflection_documents`
-    SQL
     use_legacy_sql = false
   }
 }

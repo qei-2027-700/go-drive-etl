@@ -154,14 +154,13 @@ func Run(
 								"document_name":    record.GetDocumentName(),
 								"drive_url":        record.GetDriveUrl(),
 							}
-							// Rawの列名は既存データとの互換性のため維持し、Viewでretro_*を公開する。
 							if record.RetroMonth != nil {
-								row["reflection_month"] = record.GetRetroMonth()
-								row["reflection_sequence"] = record.GetRetroSequence()
+								row["retro_month"] = record.GetRetroMonth()
+								row["retro_sequence"] = record.GetRetroSequence()
 							}
 							if record.RetroStartDate != nil && record.RetroEndDate != nil {
-								row["reflection_start_date"] = record.GetRetroStartDate()
-								row["reflection_end_date"] = record.GetRetroEndDate()
+								row["retro_start_date"] = record.GetRetroStartDate()
+								row["retro_end_date"] = record.GetRetroEndDate()
 							}
 							chunkRows = append(chunkRows, row)
 						}

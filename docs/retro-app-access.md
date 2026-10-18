@@ -2,14 +2,14 @@
 
 ## 設計と公開範囲
 
-Terraform の `iac/retro_app.tf` で `reflection-documents-app@<project_id>.iam.gserviceaccount.com` を新規作成する。ETL と `looker-studio-bi` から分離し、クエリ実行プロジェクトは `var.project_id` と同じにする。既存の Gold View は通常の View のまま使う。
+Terraform の `iac/retro_app.tf` で `reflection-documents-app@<project_id>.iam.gserviceaccount.com` を管理する。ETL と `looker-studio-bi` から分離し、クエリ実行プロジェクトは `var.project_id` と同じにする。既存の Gold View は通常の View のまま使う。
 
 | 対象 | 付与する権限 |
 |---|---|
 | `var.project_id` | `roles/bigquery.jobUser`（ジョブ実行） |
 | Raw `chunks`、`chunks_current` | 各テーブル・View の `roles/bigquery.dataViewer` |
 | Silver `silver_chunks` | View の `roles/bigquery.dataViewer` |
-| Gold `reflection_documents`・`retro_documents` | View の `roles/bigquery.dataViewer` |
+| Gold `retro_documents` | View の `roles/bigquery.dataViewer` |
 
 アプリは全現行文書の本文・文書名・出典・年月・期間に加え、Raw `chunks` に残る旧版・tombstone・取り込み情報も直接参照できる。月検索は公開範囲を限定するアクセス制御ではない。この範囲をアプリに公開してよいことを、適用前に確認する。`drive_files`、他の Mart、dataset 全体への権限は追加しない。
 
@@ -27,14 +27,12 @@ Gold 全体の読み取り権限を持つ BI への本文公開を避けるた�
 
 ## 適用と検証
 
-1. 共有 tfvars の project・dataset・location と検証者を確認し、次を実行する。plan の追加範囲と上記の公開範囲を確認してから apply する。今回の適用結果は末尾に記録する。
+1. 共有 tfvars の project・dataset・location と検証者を確認し、次を実行する。既存環境では [Raw列の移行手順](raw-retro-column-migration.md) に従い、列リネーム後の plan と公開範囲を確認して段階適用する。実施した結果は過去の記録と区別して追記する。
 
    ```sh
    ./scripts/terraform fmt -check
    ./scripts/terraform validate
    ./scripts/terraform plan -input=false
-   # 差分とアクセス範囲の確認後に実行
-   ./scripts/terraform apply
    ```
 
 2. 適用後、データがある月を指定して実行する。非標準の Gold dataset / location なら引数で指定する。

@@ -3,7 +3,6 @@
 
 import argparse
 import json
-from pathlib import Path
 import re
 import subprocess
 import sys
@@ -50,16 +49,7 @@ def verify(args):
     if args.maximum_bytes_billed <= 0:
         raise ValueError("Maximum bytes billed must be positive")
 
-    # The old entry point remains usable before the new view is deployed.
-    legacy = Path(sys.argv[0]).name == "verify-reflection-app"
-    if legacy:
-        source = f"""SELECT file_id, document_name, drive_url, content,
-          reflection_month AS retro_month,
-          reflection_start_date AS retro_start_date,
-          reflection_end_date AS retro_end_date
-          FROM `{args.project}.{args.gold_dataset}.reflection_documents`"""
-    else:
-        source = f"SELECT * FROM `{args.project}.{args.gold_dataset}.retro_documents`"
+    source = f"SELECT * FROM `{args.project}.{args.gold_dataset}.retro_documents`"
     # The query evaluates content/source inside BigQuery; no document values leave it.
     query = f"""
 WITH documents AS (

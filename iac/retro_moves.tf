@@ -2,11 +2,6 @@
 # 同じリソースを使い続けるための指定であり、この指定自体はデータ移動や再作成を指示しない。
 
 moved {
-  from = google_bigquery_table.reflection_documents
-  to   = google_bigquery_table.retro_documents_legacy
-}
-
-moved {
   from = google_service_account.reflection_app
   to   = google_service_account.retro_app
 }

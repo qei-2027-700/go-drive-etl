@@ -11,7 +11,7 @@
 
 従来の番号は第何週かを確定する情報ではない。新たに合意した規約の適用対象を除き、正確な対象期間は未設定のままにする。番号は1以上の int32 範囲とし、年月や番号が不正な見出しでは年月・番号とも未設定にする。本文と出典、取り込み日時は引き続き保存する。
 
-年月ラベルは分割前の本文から一度だけ抽出し、全チャンクへ同じ値を付ける。Raw の `chunks` は互換性のため従来の `reflection_*` 列へ保存し、`chunks_current` と Silver の `silver_chunks` で `retro_*` の別名も公開する。既存行には値がないため、追加列は NULLABLE とする。
+年月ラベルは分割前の本文から一度だけ抽出し、全チャンクへ同じ値を付ける。Raw の `chunks` から `chunks_current`・Silver・Gold まで、4列を `retro_*` に統一する。型と NULLABLE は維持し、不明な値を過去の値や取り込み日時で補わない。
 
 ## 月による取得
 
@@ -31,14 +31,9 @@ ORDER BY file_id, chunk_index
 
 ## 適用と再処理
 
-スキーマと View の定義変更だけでは実環境へ反映されない。実際の取り込みより前に、リポジトリのルートから次を実行し、計画を確認して適用する。
+既存環境の `reflection_*` からの移行は、[Raw列の移行手順](raw-retro-column-migration.md) に従う。Terraform のスキーマ変更だけでは列をリネームできない。Worker を止め、SQL で列をリネームしてから、refresh を有効にした新しい plan を確認して View を更新する。列リネームだけを理由とする Drive の再取り込みは不要である。
 
-```sh
-./scripts/terraform plan
-./scripts/terraform apply
-```
-
-Raw の `chunks` → `chunks_current` → Silver の `silver_chunks` の順に更新する必要がある。View の `depends_on` でこの順序を指定する。指定がないと、上流の更新完了前に下流の View が追加列を参照して失敗する場合がある。
+新規環境では新スキーマを作成してから Worker を起動する。Raw → `chunks_current` → Silver → Gold の順序は `depends_on` で指定する。
 
 既存ファイルへ年月と出典を付け直す場合は、次を実行する。
 
@@ -68,27 +63,22 @@ Raw は追記方式なので再処理では保存行が増えるが、`chunks_cu
 
 Go の合成データによるテストと Terraform の静的検証は、実 BigQuery 上の SQL 検証とは区別する。実文書本文はテストデータへ保存しない。
 
-## retroへの命名変更と互換性
+## retroへの命名統一
 
-コードの型・関数・ファイル名と新しい公開名では、振り返りを `retro` と呼ぶ。既存データや利用側を壊さないため、外部に保存済みの名前は互換用に残す。
-
-| 対象 | 新しい名前と既存利用側の扱い |
+| 対象 | 名前と移行後の扱い |
 |---|---|
-| Go・Protobuf | `RetroLabel`・`RetroPeriod`・`ExtractRetroLabel`、`retro_*` フィールド。Protobufのフィールド番号・型・optionalは維持する。現在使っていないProtoJSONの旧名は固定しない |
-| Rawの保存列 | 既存の `reflection_*` を維持し、過去データも新しい取り込みも同じ列へ保存する |
-| `chunks_current`・Silver | 旧 `reflection_*` に加え、同じ値を持つ `retro_*` 列を公開する |
-| Gold | 新しい `retro_documents` と従来の `reflection_documents` を併存させる。本文・期間・最新版の選択は同じで、新Viewは列名だけを変える |
-| 設定とコマンド | 新名は `RETRO_SPRINT_FROM_MONTH` と `verify-retro-app`・`test-retro-documents`・`test-verify-retro-app`。今回初めて導入する環境変数は新名だけを使い、既存の旧コマンドは互換用に残す |
+| Go・Protobuf | `RetroLabel`・`RetroPeriod`・`ExtractRetroLabel`、`retro_*` フィールド。Protobuf のフィールド番号・型・optional は維持する |
+| Raw・`chunks_current`・Silver | `retro_month`・`retro_sequence`・`retro_start_date`・`retro_end_date`。旧列の別名は公開しない |
+| Gold | `retro_documents` が Silver を直接集約する。旧 `reflection_documents` とその専用の読み取り権限は削除する |
+| 設定とコマンド | `RETRO_SPRINT_FROM_MONTH`、`verify-retro-app`・`test-retro-documents`・`test-verify-retro-app` を使う。旧 reflection コマンドは削除する |
 
-`RETRO_SPRINT_FROM_MONTH` が空欄・未指定なら期間計算を無効にする。`REFLECTION_SPRINT_FROM_MONTH` は未運用の旧案であり、読み取り対象に含めない。
+`RETRO_SPRINT_FROM_MONTH` が空欄・未指定なら期間計算を無効にする。2026年11月からの適用方針は変更しない。`REFLECTION_SPRINT_FROM_MONTH` は読み取らない。
 
-サービスアカウントの実IDは `reflection-documents-app` のまま維持する。Terraformの識別子はretroへ変更し、`moved` ブロックで既存stateのリソースを引き継ぐ。検証者の入力変数は `retro_app_impersonator_members` を新名とし、旧 `reflection_app_impersonator_members` との和集合を使って既存の権限を失わないようにする。出力名も新旧を併存させる。
+サービスアカウントの実 ID `reflection-documents-app` は維持する。既存 state のサービスアカウント・IAM 等を引き継ぐ `moved` ブロックも残す。検証者入力の旧 `reflection_app_impersonator_members` と出力 `reflection_app_service_account_email` は、既存設定・権限を保つため互換用に残す。列や View の互換処理とは分けて扱う。
 
-適用前に `./scripts/terraform plan` で、既存View・サービスアカウント・IAMの削除や再作成がないことを確認する。適用順は `chunks_current` → Silver → 旧Gold View → 新Gold Viewと読み取り権限とする。新Viewは通常のViewなので、専用アカウントには新Viewに加えて旧View・Silver・Rawの読み取り権限も必要になる。既存のアカウントIDや本文の公開範囲を変えるものではない。
+旧列・旧 Gold View の利用側は切替前に確認する。移行順序、削除保護、state、失敗時の復旧、plan の判定基準は [Raw列の移行手順](raw-retro-column-migration.md) を参照する。
 
-Terraformを適用してから利用側のクエリを `retro_documents` / `retro_*` に切り替える。旧View・旧列は引き続き使えるため、利用側を同時に切り替える必要はない。この命名変更だけを理由とするデータ再処理は不要である。旧 `verify-reflection-app` は旧Viewを、新 `verify-retro-app` は新Viewを検証する。
-
-### 2026-10-18の命名変更の検証
+### 2026-10-18の PR #143 時点の検証（#144 の適用前）
 
 `go test ./...`、`go vet ./...`、`go build ./...`、検証スクリプトのオフラインテスト8件、Terraformの静的検証が成功した。Protobufの既存のフィールド番号・型・optional、適用開始月の有効・無効・不正値を確認した。Firestore・PostgreSQLの接続を必要とする既存テストは、実DBを用意しない通常のGoテストではスキップされるため、今回の名前変更で実DBを使う検証を行ったという意味ではない。
 
