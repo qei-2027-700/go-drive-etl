@@ -14,11 +14,10 @@ resource "google_project_iam_member" "retro_app_job_user" {
 
 locals {
   retro_app_tables = {
-    chunks               = google_bigquery_table.chunks
-    chunks_current       = google_bigquery_table.chunks_current
-    silver_chunks        = google_bigquery_table.silver_chunks
-    reflection_documents = google_bigquery_table.retro_documents_legacy
-    retro_documents      = google_bigquery_table.retro_documents
+    chunks          = google_bigquery_table.chunks
+    chunks_current  = google_bigquery_table.chunks_current
+    silver_chunks   = google_bigquery_table.silver_chunks
+    retro_documents = google_bigquery_table.retro_documents
   }
 }
 

@@ -1,6 +1,6 @@
 # 外部アプリ向けの振り返り文書 View
 
-`etl_gold.retro_documents` は、既存の `reflection_documents` を介して `etl_silver.silver_chunks` の文書を取得し、列名をretroに揃える通常の View である。本文を二重保存せず、参照時に SQL を実行する。実際の dataset 名は Terraform の変数に従う。
+`etl_gold.retro_documents` は、`etl_silver.silver_chunks` の文書を直接集約する通常の View である。本文を二重保存せず、参照時に SQL を実行する。実際の dataset 名は Terraform の変数に従う。
 
 ## 公開するデータ
 
@@ -38,7 +38,7 @@ ORDER BY retro_sequence, file_id
 
 ## 権限・料金・保持期間
 
-通常の View の参照には、クエリ実行プロジェクトの `roles/bigquery.jobUser` と、View および参照先の各 View・元テーブルに対する読み取り権限が必要である。#137 の実装では、専用アカウントに新旧のGold Viewと上流3リソースの計5リソースの読み取り権限を個別に付与する。Authorized View は使用しない。公開範囲、認証、適用後の検証は [アプリ用アカウントの検証手順](retro-app-access.md) を参照する。[Google Cloud の権限説明](https://docs.cloud.google.com/bigquery/docs/control-access-to-resources-iam)
+通常の View の参照には、クエリ実行プロジェクトの `roles/bigquery.jobUser` と、View および参照先の各 View・元テーブルに対する読み取り権限が必要である。専用アカウントに Gold View と上流3リソースの計4リソースの読み取り権限を個別に付与する。Authorized View は使用しない。公開範囲、認証、適用後の検証は [アプリ用アカウントの検証手順](retro-app-access.md) を参照する。[Google Cloud の権限説明](https://docs.cloud.google.com/bigquery/docs/control-access-to-resources-iam)
 
 既存の BI 用アカウントは Gold dataset の読み取り権限を持つが、Raw / Silver の権限は持たないため、この通常の View の本文を取得するには不足する。BI の権限を広げる変更や、この View を Authorized View にする変更では、本文へのアクセス範囲も確認する。既存 Mart の SQL、CSV 出力対象、BI 設定は変更しない。
 
@@ -55,17 +55,17 @@ Sandbox では元テーブルと View 自体に最大60日の期限がある。�
 ./scripts/terraform validate
 ```
 
-合成データの検証スクリプトは Terraform 内の実際の SQL を読み、Raw・最新版選択・Silver・Gold を一時テーブルで再現する。SQL をテスト用に複製しない。
+合成データの検証スクリプトは Terraform 内の実際の SQL を読み、Raw・最新版選択・Silver・Gold を一時テーブルで再現する。移行前の基準には PR #143（`fc42119`）の SQL を固定した fixture を使い、移行後には現在の Terraform の SQL を使う。同じ合成データに移行・復旧 SQL を実行し、Raw・各 View の全値、NULL、重複行数を比較する。
 
 ```sh
-./scripts/test-retro-documents > /tmp/reflection-documents-test.sql
-bq query --use_legacy_sql=false --maximum_bytes_billed=268435456 \
-  < /tmp/reflection-documents-test.sql
+./scripts/test-retro-documents > /tmp/retro-documents-test.sql
+bq query --use_legacy_sql=false --maximum_bytes_billed=1073741824 \
+  < /tmp/retro-documents-test.sql
 ```
 
 クエリ実行プロジェクトは事前に確認する。すべて合成データと一時テーブルを使い、本番テーブルを読み書きしない。SQL の ASSERT で本文の順序、重複、旧版、メタデータ更新と NULL、空文書、長い Unicode チャンク、期間 NULL、パラメータ付き月検索を検証する。Terraform の検証と実 BigQuery 上の SQL 検証は区別して記録する。
 
-実環境への適用は別途、`./scripts/terraform plan` の差分を確認してから `./scripts/terraform apply` を実行する。依存順は `chunks_current` → `silver_chunks` → `reflection_documents` → `retro_documents` とする。#128 の列と既存データが揃っていれば、Gold View の追加だけを理由に Worker を再実行する必要はない。
+既存環境への適用は [Raw列の移行手順](raw-retro-column-migration.md) に従う。SQL による列リネームと Terraform の適用順序、旧 Gold View の削除保護を確認する。移行後の依存順は `chunks_current` → `silver_chunks` → `retro_documents` とする。列名変更だけを理由とする Worker の再取り込みは不要である。
 
 適用後はアプリ用アカウントで上記の月検索を実行し、文書 ID の一意性・本文・出典・NULL と読み取り権限を確認する。実文書本文や識別情報を検証ログ、Issue、ソース、テストデータへ保存しない。合成データの成功は、デプロイ済み View やアプリ用 IAM の検証完了を意味しない。
 

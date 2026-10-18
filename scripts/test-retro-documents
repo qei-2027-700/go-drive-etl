@@ -7,9 +7,23 @@ No production tables are read or changed. Pipe stdout to bq query with
 
 from pathlib import Path
 import re
+import runpy
 import sys
 
 ROOT = Path(__file__).resolve().parent.parent
+
+
+def substitute_tables(query, before=False):
+    suffix = "_before" if before else ""
+    for reference, table in (
+        ("`${var.project_id}.${google_bigquery_dataset.etl.dataset_id}.chunks`", "chunks"),
+        ("`${var.project_id}.${google_bigquery_dataset.etl.dataset_id}.chunks_current`", "chunks_current"),
+        ("`${var.project_id}.${google_bigquery_dataset.silver.dataset_id}.silver_chunks`", "silver_chunks"),
+    ):
+        query = query.replace(reference, table if table == "chunks" else table + suffix)
+    if "${" in query:
+        raise ValueError("Unresolved Terraform interpolation")
+    return query
 
 
 def view_query(path, resource):
@@ -19,17 +33,7 @@ def view_query(path, resource):
     if match is None:
         raise ValueError(f"Missing SQL for {resource}")
     query = match.group(1)
-    # Replace only known Terraform references; leave all query logic intact.
-    for reference, table in (
-        ("`${var.project_id}.${google_bigquery_dataset.etl.dataset_id}.chunks`", "chunks"),
-        ("`${var.project_id}.${google_bigquery_dataset.gold.dataset_id}.reflection_documents`", "retro_documents_legacy"),
-        ("`${var.project_id}.${google_bigquery_dataset.etl.dataset_id}.chunks_current`", "chunks_current"),
-        ("`${var.project_id}.${google_bigquery_dataset.silver.dataset_id}.silver_chunks`", "silver_chunks"),
-    ):
-        query = query.replace(reference, table)
-    if "${" in query:
-        raise ValueError(f"Unresolved Terraform interpolation in {resource}")
-    return query
+    return substitute_tables(query)
 
 
 def main():
@@ -75,40 +79,52 @@ SELECT *,
   END AS reflection_end_date
 FROM fixtures;
 """)
+    # Run the frozen PR #143 queries against the old physical schema first.
+    baseline = (ROOT / "scripts/fixtures/retro-before-144.sql").read_text()
+    for block in baseline.split("-- view: ")[1:]:
+        name, query = block.split("\n", 1)
+        if name == "retro_documents_legacy":
+            name = "retro_documents"
+        print(f"CREATE TEMP TABLE {name}_before AS\n{substitute_tables(query, before=True)};\n")
+    print("CREATE TEMP TABLE chunks_before AS SELECT * FROM chunks;")
+    rename_sql = runpy.run_path(str(ROOT / "scripts/retro-column-migration"))["rename_sql"]
+    print(rename_sql("chunks"))
     for path, name in (
         ("iac/bigquery.tf", "chunks_current"),
         ("iac/silver_gold.tf", "silver_chunks"),
-        ("iac/silver_gold.tf", "retro_documents_legacy"),
         ("iac/silver_gold.tf", "retro_documents"),
     ):
         print(f"CREATE TEMP TABLE {name} AS\n{view_query(path, name)};\n")
+    # Compare row multiplicity too: retries in Raw must remain untouched.
+    for name in ("chunks", "chunks_current", "silver_chunks", "retro_documents"):
+        if name in ("chunks_current", "silver_chunks"):
+            expected = f"SELECT * EXCEPT(reflection_month, reflection_sequence, reflection_start_date, reflection_end_date) FROM {name}_before"
+        else:
+            expected = f"""SELECT * EXCEPT(reflection_month, reflection_sequence, reflection_start_date, reflection_end_date),
+              reflection_month AS retro_month, reflection_sequence AS retro_sequence,
+              reflection_start_date AS retro_start_date, reflection_end_date AS retro_end_date
+              FROM {name}_before"""
+        # JSON STRUCTs use names/order. Sort columns explicitly on both sides.
+        columns = {
+            "chunks": "file_id, chunk_index, content, embedding_status, content_version, ingested_at, is_deleted, document_name, drive_url, retro_month, retro_sequence, retro_start_date, retro_end_date",
+            "chunks_current": "file_id, chunk_index, content, embedding_status, content_version, ingested_at, document_name, drive_url, retro_month, retro_sequence, retro_start_date, retro_end_date",
+            "silver_chunks": "file_id, chunk_index, content, content_version, ingested_at, document_name, drive_url, retro_month, retro_sequence, retro_start_date, retro_end_date, ingested_date, embedding_status, is_embedded, content_length",
+            "retro_documents": "file_id, document_name, drive_url, content, content_version, ingested_at, retro_month, retro_sequence, retro_start_date, retro_end_date",
+        }[name]
+        print(f"""CREATE TEMP TABLE expected_{name} AS SELECT {columns} FROM ({expected});
+CREATE TEMP TABLE actual_{name} AS SELECT {columns} FROM {name};
+ASSERT NOT EXISTS (
+  WITH expected AS (
+    SELECT TO_JSON_STRING(t) AS row_value, COUNT(*) AS copies
+    FROM expected_{name} t GROUP BY row_value
+  ), actual AS (
+    SELECT TO_JSON_STRING(t) AS row_value, COUNT(*) AS copies
+    FROM actual_{name} t GROUP BY row_value
+  )
+  SELECT * FROM expected FULL OUTER JOIN actual USING (row_value)
+  WHERE expected.copies IS DISTINCT FROM actual.copies
+) AS '{name}: rename preserves all values, NULLs and duplicate counts';""")
     print(r"""
-ASSERT (SELECT COUNT(*) = 0 FROM chunks_current
-  WHERE retro_month IS DISTINCT FROM reflection_month
-     OR retro_sequence IS DISTINCT FROM reflection_sequence
-     OR retro_start_date IS DISTINCT FROM reflection_start_date
-     OR retro_end_date IS DISTINCT FROM reflection_end_date)
-  AS 'Raw current aliases preserve old data including NULL';
-ASSERT (SELECT COUNT(*) = 0 FROM silver_chunks
-  WHERE retro_month IS DISTINCT FROM reflection_month
-     OR retro_sequence IS DISTINCT FROM reflection_sequence
-     OR retro_start_date IS DISTINCT FROM reflection_start_date
-     OR retro_end_date IS DISTINCT FROM reflection_end_date)
-  AS 'Silver exposes equivalent legacy and retro columns';
-ASSERT (SELECT COUNT(*) = 0 FROM (
-  SELECT file_id, document_name, drive_url, content, content_version, ingested_at,
-    reflection_month, reflection_sequence, reflection_start_date, reflection_end_date
-  FROM retro_documents_legacy
-  EXCEPT DISTINCT
-  SELECT * FROM retro_documents))
-  AS 'legacy documents remain available with identical metadata';
-ASSERT (SELECT COUNT(*) = 0 FROM (
-  SELECT * FROM retro_documents
-  EXCEPT DISTINCT
-  SELECT file_id, document_name, drive_url, content, content_version, ingested_at,
-    reflection_month, reflection_sequence, reflection_start_date, reflection_end_date
-  FROM retro_documents_legacy))
-  AS 'new document view adds no rows or metadata differences';
 ASSERT (SELECT COUNT(*) = 5 AND COUNT(DISTINCT file_id) = 5 FROM retro_documents)
   AS 'one row per current nonempty file';
 ASSERT (SELECT content = 'first\n\nsecond' AND content_version = 'v2'
@@ -199,8 +215,15 @@ ASSERT period_count = 0 AS 'reversed query ranges do not match';
 ASSERT DATE(TIMESTAMP '2026-10-04 14:59:59+00', 'Asia/Tokyo') = DATE '2026-10-04'
    AND DATE(TIMESTAMP '2026-10-04 15:00:00+00', 'Asia/Tokyo') = DATE '2026-10-05'
   AS 'timestamp callers must use the Japanese midnight boundary';
-SELECT 'All retro_documents assertions passed' AS result;
+
 """)
+    print(rename_sql("chunks", rollback=True))
+    print("""ASSERT NOT EXISTS (
+  SELECT * FROM chunks EXCEPT DISTINCT SELECT * FROM chunks_before
+) AND NOT EXISTS (
+  SELECT * FROM chunks_before EXCEPT DISTINCT SELECT * FROM chunks
+) AS 'rollback restores the original Raw schema and data';
+SELECT 'All retro_documents assertions passed' AS result;""")
 
 
 if __name__ == "__main__":

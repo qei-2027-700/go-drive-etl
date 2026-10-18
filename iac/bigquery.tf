@@ -90,12 +90,12 @@ resource "google_bigquery_table" "chunks" {
       mode = "NULLABLE"
     },
     {
-      name = "reflection_start_date"
+      name = "retro_start_date"
       type = "DATE"
       mode = "NULLABLE"
     },
     {
-      name = "reflection_end_date"
+      name = "retro_end_date"
       type = "DATE"
       mode = "NULLABLE"
     },
@@ -110,12 +110,12 @@ resource "google_bigquery_table" "chunks" {
       mode = "NULLABLE"
     },
     {
-      name = "reflection_month"
+      name = "retro_month"
       type = "STRING"
       mode = "NULLABLE"
     },
     {
-      name = "reflection_sequence"
+      name = "retro_sequence"
       type = "INTEGER"
       mode = "NULLABLE"
     },
@@ -146,8 +146,8 @@ resource "google_bigquery_table" "chunks_current" {
       ),
       deduplicated_chunks AS (
         SELECT file_id, chunk_index, content, embedding_status, content_version, ingested_at, is_deleted,
-          reflection_start_date, reflection_end_date, document_name, drive_url,
-          reflection_month, reflection_sequence
+          retro_start_date, retro_end_date, document_name, drive_url,
+          retro_month, retro_sequence
         FROM `${var.project_id}.${google_bigquery_dataset.etl.dataset_id}.chunks`
         QUALIFY ROW_NUMBER() OVER (
           PARTITION BY file_id, content_version, chunk_index ORDER BY ingested_at DESC
@@ -155,12 +155,8 @@ resource "google_bigquery_table" "chunks_current" {
       )
       SELECT chunks.file_id, chunks.chunk_index, chunks.content, chunks.embedding_status,
         chunks.content_version, chunks.ingested_at,
-        chunks.reflection_start_date, chunks.reflection_end_date, chunks.document_name, chunks.drive_url,
-        chunks.reflection_month, chunks.reflection_sequence,
-        chunks.reflection_start_date AS retro_start_date,
-        chunks.reflection_end_date AS retro_end_date,
-        chunks.reflection_month AS retro_month,
-        chunks.reflection_sequence AS retro_sequence
+        chunks.retro_start_date, chunks.retro_end_date, chunks.document_name, chunks.drive_url,
+        chunks.retro_month, chunks.retro_sequence
       FROM deduplicated_chunks AS chunks
       INNER JOIN latest_versions USING (file_id, content_version)
       WHERE COALESCE(chunks.is_deleted, FALSE) = FALSE

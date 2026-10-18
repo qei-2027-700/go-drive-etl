@@ -496,7 +496,7 @@ func TestRun_RetroWithoutDateKeepsPeriodNull(t *testing.T) {
 	for i, row := range rows {
 		// Omitted NDJSON fields and explicit null both represent a missing
 		// nullable DATE. Neither today's date nor ingested_at is a target date.
-		for _, field := range []string{"reflection_start_date", "reflection_end_date"} {
+		for _, field := range []string{"retro_start_date", "retro_end_date"} {
 			if row[field] != nil {
 				t.Errorf("chunk %d: missing %s replaced with %#v", i, field, row[field])
 			}
@@ -520,10 +520,10 @@ func TestRun_RetroTitleLabelOnEveryChunk(t *testing.T) {
 		t.Fatalf("chunk count = %d, want 2", len(rows))
 	}
 	for i, row := range rows {
-		if row["reflection_month"] != "2026-10" || row["reflection_sequence"] != int32(1) {
-			t.Errorf("chunk %d: label = %v/%v, want 2026-10/1", i, row["reflection_month"], row["reflection_sequence"])
+		if row["retro_month"] != "2026-10" || row["retro_sequence"] != int32(1) {
+			t.Errorf("chunk %d: label = %v/%v, want 2026-10/1", i, row["retro_month"], row["retro_sequence"])
 		}
-		for _, field := range []string{"reflection_start_date", "reflection_end_date"} {
+		for _, field := range []string{"retro_start_date", "retro_end_date"} {
 			if row[field] != nil {
 				t.Errorf("chunk %d: inferred exact period %s = %v", i, field, row[field])
 			}
@@ -546,10 +546,10 @@ func TestRun_RetroSprintOnEveryChunk(t *testing.T) {
 	// 202609-4 は9月の第4月曜日（9/28）から10/4まで。
 	// 2つのチャンクが同じ期間を持ち、タイトルの年月は9月のままであることを確認する。
 	for i, row := range rows {
-		if row["reflection_start_date"] != "2026-09-28" || row["reflection_end_date"] != "2026-10-04" {
-			t.Errorf("chunk %d: unexpected period: %v/%v", i, row["reflection_start_date"], row["reflection_end_date"])
+		if row["retro_start_date"] != "2026-09-28" || row["retro_end_date"] != "2026-10-04" {
+			t.Errorf("chunk %d: unexpected period: %v/%v", i, row["retro_start_date"], row["retro_end_date"])
 		}
-		if row["reflection_month"] != "2026-09" {
+		if row["retro_month"] != "2026-09" {
 			t.Errorf("chunk %d: title month changed", i)
 		}
 	}
@@ -559,7 +559,7 @@ func TestRun_RetroSprintOnEveryChunk(t *testing.T) {
 	t.Setenv("RETRO_SPRINT_FROM_MONTH", "2026-10")
 	after := runRetroAndCaptureRows(t, file, content)
 	for i, row := range after {
-		if row["content_version"] != rows[i]["content_version"] || row["reflection_start_date"] != nil || row["reflection_end_date"] != nil {
+		if row["content_version"] != rows[i]["content_version"] || row["retro_start_date"] != nil || row["retro_end_date"] != nil {
 			t.Errorf("chunk %d: metadata refresh failed", i)
 		}
 	}
@@ -624,6 +624,13 @@ func runRetroAndCaptureRows(t *testing.T, file *domain.File, content []byte) []m
 	)
 	if err := Run(context.Background(), repo, driveClient, bqClient); err != nil {
 		t.Fatalf("Run: %v", err)
+	}
+	for i, row := range captured {
+		for _, suffix := range []string{"month", "sequence", "start_date", "end_date"} {
+			if _, exists := row["reflection_"+suffix]; exists {
+				t.Errorf("chunk %d: obsolete Raw column reflection_%s", i, suffix)
+			}
+		}
 	}
 	return captured
 }
