@@ -128,3 +128,46 @@ Go テスト、Terraform の静的検証、実 BigQuery の合成データ検証
 | 実環境への適用 | 列リネーム、削除保護解除、View / IAM の更新・削除、適用後の月・期間検索は未実施。リネーム後の実環境 plan も未確認 |
 
 ローカルの詳細ログは Git 管理外の `/tmp/retro-144-checks/` に保存した。Go・Terraform・合成 SQL・文書の検査結果を分けて保存し、本文や文書識別情報を含む本番データは取得していない。外部利用側の参照確認と、上記の段階適用は実施時に必要である。
+
+### 2026-10-18 の #146 本番移行
+
+ユーザーが外部アプリを利用していないことと、保守中に Worker・Terraform を起動しないことを確認し、このセッションでの移行を了承した。Looker Studio の既存 `Ingestion health` を実画面で確認したところ、データソースは `etl_gold.mart_ingestion_daily` と `etl_gold.mart_file_latest` の2つで、どちらもテーブル接続・オーナー認証だった。両方とも今回の変更対象ではなく、レポートの設定は変更していない。scheduled query の transfer config は0件、直近7日間の Load Job は9件すべて完了しており、ローカルの Worker・Terraform も実行中ではなかった。
+
+適用先は `go-drive-etl-507314`、リージョンは `asia-northeast1`。実行者は `qlpt2020@gmail.com`、共有 state と tfvars は既定の正本を使用した。バックアップと保存 plan は所有者だけが読める `~/.local/state/go-drive-etl/retro-146-private/` に保管した。保守中の失敗時は利用側を停止したまま、逆リネームと `fc42119` の View / IAM 構成による復旧を行う手順とした。state の上書きや Raw の再作成は行っていない。
+
+| 段階 | 確認・適用結果 |
+|---|---|
+| 旧 View の保護解除 | `fc42119` の一時構成で `retro_documents_legacy.deletion_protection` の `true` → `false` だけを変更。plan・apply とも追加0件・変更1件・削除0件。Raw と残す View の保護は維持 |
+| リネーム前 | Raw は30行・24,447 bytes。旧4列の型・NULLABLE を確認。row access policy は0件で、API のスキーマ・メタデータに partition / clustering・制約・policy tag・resource tag はなかった。移行前 plan の Raw 再作成は適用していない |
+| Raw の DDL | `scripts/retro-column-migration` が生成した1文の `ALTER TABLE` が成功。旧4列が新4列へ変わり、その他のスキーマ・型・モード・行数・bytes・保持期限は移行前と一致。列名を揃えて全列から計算した集計フィンガープリントも一致し、本文・取り込み情報を含む値の維持を確認 |
+| リネーム後の plan | refresh を有効にした新しい plan で Raw は変更なし。残す3 View は SQL だけの更新で、削除は旧 View とその専用アプリ IAM だけ。apply も追加0件・変更3件・削除2件で成功 |
+| View・既存 IAM | `chunks_current` → `silver_chunks` → `retro_documents` に旧列名・旧別名はなく、Gold は Silver を直接参照。旧 `reflection_documents` は API で404。残す IAM・SA の state 属性と共有 tfvars は移行前と一致 |
+
+検証者への Token Creator は `-var` でアプリ SA だけに一時付与し、共有 tfvars は変更しなかった。追加権限の反映後、`reflection-documents-app@go-drive-etl-507314.iam.gserviceaccount.com` への impersonation で `scripts/verify-retro-app` が成功した。別クエリの `SESSION_USER()` でも同じ SA を確認した。クエリごとの費用上限は256 MiBである。
+
+| アプリ SA による検証 | 結果 |
+|---|---|
+| `@month = '2026-10'` の月検索 | 文書数・一意数・空でない本文数・出典ありは各1件。文書名 NULL は0件、開始日・終了日 NULL は各1件 |
+| View 全体の NULL | 全3文書の年月 NULL は0件、開始日・終了日 NULL は各3件 |
+| DATE パラメータの期間検索 | `2026-10-01`〜`2026-10-31` の両端を含む重複条件で実行成功、0件。全期間が NULL のため、実データによる期間抽出の成功とは扱わない |
+| 4リソースの実読み取り | Raw `chunks` は30行、`chunks_current` は15行、Silver は15行、Gold は3文書。返したのは件数だけ |
+
+一時検証権限の削除は追加0件・変更0件・削除1件の plan と apply で成功し、SA の実 IAM ポリシーからも検証者の binding がなくなった。削除後の `plan -detailed-exitcode` は終了コード0で `No changes` だった。発行済み短期トークンは binding 削除だけでは失効せず、有効期限まで利用できる可能性がある。
+
+Policy Troubleshooter による実効権限38件は、すべて想定どおりだった。REST API の `GRANTED` / `NOT_GRANTED` を、それぞれ `CAN_ACCESS` / `CANNOT_ACCESS` に対応させて確認した。
+
+| 権限の対象 | 判定 |
+|---|---|
+| アプリ → 残す4リソースの `getData` | 4件すべて許可 |
+| アプリ → 同4リソースの `updateData` / `update` / `delete` / `setIamPolicy` | 16件すべて不許可 |
+| アプリ → 3 dataset の `tables.create` / `datasets.update` / `datasets.delete` | 9件すべて不許可 |
+| アプリ → `drive_files`、BI → Raw 2リソース・Silver の `getData` | 4件すべて不許可 |
+| BI → 新 Gold View・既存2 Mart の `getData`、アプリ・BI → `jobs.create` | 5件すべて許可 |
+
+最初の権限確認では quota project の指定不足を修正し、その後の回数制限には間隔を空けた再試行で対応した。API エラーを拒否成功として数えていない。実データへの更新・削除による権限試験は行っていない。
+
+最終 plan と権限確認の後、移行後コミットからビルドした Worker を既存の実行設定で通常実行した。`REPROCESS_ALL=false` を明示し、3ファイルの検出後にパイプラインが終了コード0で完了した。実行ログは本文・識別情報を保存せず、件数・終了コード・完了の有無だけを記録した。通常実行後も Raw は30行だった。Looker Studio のデータ更新後、18:08 の表示でファイル数3件・未埋め込みチャンク15件を確認した。Worker は手動の単発実行であり、常駐プロセスや schedule の再起動はない。
+
+`go build ./...` と Worker のビルドは成功した。変更は本番移行の実績追記だけで、#144 で成功済みの Go テスト・合成データ21件の ASSERT は繰り返していない。実文書の本文・出典の内容の正しさ、NULL でない実期間の抽出、外部アプリの実行基盤は未検証である。
+
+詳細ログは Git 管理外の `/tmp/retro-146-checks/` に保管した。本文・文書 ID・文書名・出典 URL・state / tfvars の内容・トークン・鍵は本記録と検証ログに保存していない。共有 tfvars の既存の未宣言変数 `scheduled_query_service_account_email` の警告は残っている。
