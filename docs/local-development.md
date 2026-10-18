@@ -141,3 +141,9 @@ POSTGRES_TEST_DSN=postgres://app:password@localhost:5432/app_db?sslmode=disable 
 ```
 
 **このテストは `files` テーブルを空にする。** アプリが読む `POSTGRES_DSN` ではなく専用の変数を使うのは、接続先を取り違えて本番相当のデータを消さないようにするため。
+
+## テストファイルの配置
+
+実装とテストの対応を追いやすくするため、原則として `xxx.go` に対するテストを `xxx_test.go` にまとめる。例えば、`worker_pool.go` の振り返り処理も `worker_pool_test.go` で検証する。これはGoの必須条件ではなく、このリポジトリでの配置方針とする。
+
+自動生成ファイルは例外とし、`record.pb.go` に対する手書きテストは `record_test.go` に置く。生成ファイルを直接編集せず、元の `proto/record.proto` を修正して再生成する。

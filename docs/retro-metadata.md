@@ -64,7 +64,7 @@ Raw は追記方式なので再処理では保存行が増えるが、`chunks_cu
 
 現在の BigQuery Sandbox のテーブル保持期間は最大60日であり、通常の View は元テーブルの期限切れを防がない。長期参照の保持方針と外部アプリの読み取り権限は #129 で利用手順に記録する。
 
-月曜日を基準にする規約と対象期間の計算・検索・再処理は [sprintの対象期間](retro-sprint-periods.md) を参照する。規約の適用開始月は2026年11月に確定した。実行環境で `REFLECTION_SPRINT_FROM_MONTH=2026-11` を設定すると有効になり、未設定では期間計算を無効にする。Drive 上で削除・移動されたファイルの検知は今回追加していない。既存の tombstone は、検出して取り込んだファイルの本文が空になったことを表し、Drive 上の削除を表すものではない。
+月曜日を基準にする規約と対象期間の計算・検索・再処理は [sprintの対象期間](retro-sprint-periods.md) を参照する。規約の適用開始月は2026年11月に確定した。実行環境で `RETRO_SPRINT_FROM_MONTH=2026-11` を設定すると有効になり、未設定では期間計算を無効にする。Drive 上で削除・移動されたファイルの検知は今回追加していない。既存の tombstone は、検出して取り込んだファイルの本文が空になったことを表し、Drive 上の削除を表すものではない。
 
 Go の合成データによるテストと Terraform の静的検証は、実 BigQuery 上の SQL 検証とは区別する。実文書本文はテストデータへ保存しない。
 
@@ -78,9 +78,9 @@ Go の合成データによるテストと Terraform の静的検証は、実 Bi
 | Rawの保存列 | 既存の `reflection_*` を維持し、過去データも新しい取り込みも同じ列へ保存する |
 | `chunks_current`・Silver | 旧 `reflection_*` に加え、同じ値を持つ `retro_*` 列を公開する |
 | Gold | 新しい `retro_documents` と従来の `reflection_documents` を併存させる。本文・期間・最新版の選択は同じで、新Viewは列名だけを変える |
-| 設定とコマンド | 新名は `RETRO_SPRINT_FROM_MONTH` と `verify-retro-app`・`test-retro-documents`・`test-verify-retro-app`。旧環境変数と旧コマンドも互換用に残す |
+| 設定とコマンド | 新名は `RETRO_SPRINT_FROM_MONTH` と `verify-retro-app`・`test-retro-documents`・`test-verify-retro-app`。今回初めて導入する環境変数は新名だけを使い、既存の旧コマンドは互換用に残す |
 
-新環境変数が存在する場合は、空欄も含めて新名を優先する。新名が未設定のときだけ `REFLECTION_SPRINT_FROM_MONTH` を使う。旧設定を残した環境でも、新名を空欄にすれば期間計算を無効にできる。
+`RETRO_SPRINT_FROM_MONTH` が空欄・未指定なら期間計算を無効にする。`REFLECTION_SPRINT_FROM_MONTH` は未運用の旧案であり、読み取り対象に含めない。
 
 サービスアカウントの実IDは `reflection-documents-app` のまま維持する。Terraformの識別子はretroへ変更し、`moved` ブロックで既存stateのリソースを引き継ぐ。検証者の入力変数は `retro_app_impersonator_members` を新名とし、旧 `reflection_app_impersonator_members` との和集合を使って既存の権限を失わないようにする。出力名も新旧を併存させる。
 
@@ -90,7 +90,7 @@ Terraformを適用してから利用側のクエリを `retro_documents` / `retr
 
 ### 2026-10-18の命名変更の検証
 
-`go test ./...`、`go vet ./...`、`go build ./...`、検証スクリプトのオフラインテスト8件、Terraformの静的検証が成功した。Protobufの既存のフィールド番号・型・optional、旧環境変数、新設定の優先順位を確認した。Firestore・PostgreSQLの接続を必要とする既存テストは、実DBを用意しない通常のGoテストではスキップされるため、今回の名前変更で実DBを使う検証を行ったという意味ではない。
+`go test ./...`、`go vet ./...`、`go build ./...`、検証スクリプトのオフラインテスト8件、Terraformの静的検証が成功した。Protobufの既存のフィールド番号・型・optional、適用開始月の有効・無効・不正値を確認した。Firestore・PostgreSQLの接続を必要とする既存テストは、実DBを用意しない通常のGoテストではスキップされるため、今回の名前変更で実DBを使う検証を行ったという意味ではない。
 
 実BigQueryの一時テーブルで20件のASSERTが成功した。既存Raw列の新しい別名、Silverの新旧列、新旧Gold Viewの本文・期間・NULLが一致することを確認した。本番データは読み書きしていない。
 

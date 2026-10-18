@@ -54,11 +54,7 @@ func Run(
 	bqClient bq.BQClient,
 ) error {
 	markdownParser := parser.MarkdownParser{}
-	fromMonth, configured := os.LookupEnv("RETRO_SPRINT_FROM_MONTH")
-	if !configured {
-		fromMonth = os.Getenv("REFLECTION_SPRINT_FROM_MONTH") // 旧設定名との互換性を維持する。
-	}
-	sprintPolicy, err := parser.NewSprintPolicy(fromMonth)
+	sprintPolicy, err := parser.NewSprintPolicy(os.Getenv("RETRO_SPRINT_FROM_MONTH"))
 	if err != nil {
 		return fmt.Errorf("RETRO_SPRINT_FROM_MONTH: %w", err)
 	}
