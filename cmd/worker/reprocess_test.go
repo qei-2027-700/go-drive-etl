@@ -90,7 +90,7 @@ func TestRunPipeline_ReprocessAllRequeuesEveryDiscoveredFile(t *testing.T) {
 	}
 }
 
-func TestRunPipeline_ReprocessStatusFailureStopsPipeline(t *testing.T) {
+func TestRunPipeline_ReprocessStatusFailureReportsFailure(t *testing.T) {
 	t.Setenv("REPROCESS_ALL", "true")
 	ctrl := gomock.NewController(t)
 	repo := repoMock.NewMockFileRepo(ctrl)
@@ -104,18 +104,18 @@ func TestRunPipeline_ReprocessStatusFailureStopsPipeline(t *testing.T) {
 		repo.EXPECT().Upsert(gomock.Any(), gomock.Any()).Return(nil),
 		repo.EXPECT().UpdateStatus(gomock.Any(), "file-id", domain.SyncStatusPending).Return(wantErr),
 	)
-	repo.EXPECT().ListPending(gomock.Any()).Times(0)
+	repo.EXPECT().ListPending(gomock.Any()).Return(nil, nil)
 
 	err := runPipeline(context.Background(), repo, drive, bq, "folder-id", "")
-	if !errors.Is(err, wantErr) {
-		t.Fatalf("error = %v, want wrapped %v", err, wantErr)
+	if err == nil {
+		t.Fatal("runPipeline succeeded after a state update failure")
 	}
-	if !strings.Contains(err.Error(), "file-id") {
-		t.Errorf("error does not identify the failed file: %v", err)
+	if strings.Contains(err.Error(), "file-id") || strings.Contains(err.Error(), wantErr.Error()) {
+		t.Errorf("error exposes file or backend details: %v", err)
 	}
 }
 
-func TestRunPipeline_ReprocessSkipsFailedUpsertAndContinues(t *testing.T) {
+func TestRunPipeline_ReprocessReportsFailedUpsertAfterOtherFiles(t *testing.T) {
 	t.Setenv("REPROCESS_ALL", "true")
 	ctrl := gomock.NewController(t)
 	repo := repoMock.NewMockFileRepo(ctrl)
@@ -138,7 +138,26 @@ func TestRunPipeline_ReprocessSkipsFailedUpsertAndContinues(t *testing.T) {
 	)
 	repo.EXPECT().UpdateStatus(gomock.Any(), "failed-file", gomock.Any()).Times(0)
 
-	if err := runPipeline(context.Background(), repo, drive, bq, "folder-id", ""); err != nil {
-		t.Fatalf("runPipeline: %v", err)
+	if err := runPipeline(context.Background(), repo, drive, bq, "folder-id", "exports"); err == nil {
+		t.Fatal("runPipeline succeeded after a registration failure")
+	}
+}
+
+func TestRunPipeline_DoesNotExportAfterWorkerFailure(t *testing.T) {
+	t.Setenv("REPROCESS_ALL", "")
+	ctrl := gomock.NewController(t)
+	repo := repoMock.NewMockFileRepo(ctrl)
+	driveClient := driveMock.NewMockDriveClient(ctrl)
+	bqClient := bqMock.NewMockBQClient(ctrl)
+	file := &driveapi.File{Id: "file-id", Name: "memo.md"}
+
+	driveClient.EXPECT().ListFiles(gomock.Any(), "folder-id").Return([]*driveapi.File{file}, nil)
+	repo.EXPECT().Upsert(gomock.Any(), gomock.Any()).Return(nil)
+	repo.EXPECT().ListPending(gomock.Any()).Return([]*domain.File{{DriveFileID: file.Id}}, nil)
+	driveClient.EXPECT().DownloadFile(gomock.Any(), file.Id).Return(nil, errors.New("private API detail"))
+	repo.EXPECT().UpdateStatus(gomock.Any(), file.Id, domain.SyncStatusFailed).Return(nil)
+	// No CSV export expectations: an attempted export fails the test.
+	if err := runPipeline(context.Background(), repo, driveClient, bqClient, "folder-id", "exports"); err == nil {
+		t.Fatal("runPipeline succeeded after a worker failure")
 	}
 }

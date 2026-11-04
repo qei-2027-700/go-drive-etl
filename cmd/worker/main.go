@@ -25,20 +25,20 @@ func main() {
 	_ = godotenv.Load()
 	metadata := newRunMetadata()
 	if err := sentry.Init(sentryOptions(metadata)); err != nil {
-		log.Fatalf("Sentry の初期化に失敗: %v", err)
+		log.Fatal("Sentry の初期化に失敗しました")
 	}
 	defer func() {
 		if recovered := recover(); recovered != nil {
 			captureFailure(recoveredPanicError(recovered), metadata)
 			sentry.Flush(2 * time.Second)
-			panic(recovered)
+			log.Fatal("ETL の実行中に予期しないエラーが発生しました")
 		}
 	}()
 
 	if err := run(); err != nil {
-		captureFailure(err, metadata)
+		captureFailure(publicRunError(err), metadata)
 		sentry.Flush(2 * time.Second)
-		log.Print(err)
+		log.Printf("ETL の実行に失敗しました: stage=%s", stageFromError(err))
 		os.Exit(1)
 	}
 	sentry.Flush(2 * time.Second)
@@ -69,8 +69,7 @@ func run() error {
 
 	if err := runPipeline(ctx, repo, driveClient, bq, os.Getenv("DRIVE_FOLDER_ID"), os.Getenv("DRIVE_EXPORT_FOLDER_ID")); err != nil {
 		if errors.Is(err, context.Canceled) {
-			log.Println("停止シグナルを受信しました。安全にシャットダウンします。")
-			return nil
+			log.Println("停止シグナルを受信しました。処理を中断します。")
 		}
 		return fmt.Errorf("ETL パイプラインの実行に失敗: %w", err)
 	}
@@ -96,6 +95,7 @@ func runPipeline(
 		return withStage("download", fmt.Errorf("Drive ファイル一覧の取得に失敗: %w", err))
 	}
 
+	registrationFailures := 0
 	for _, file := range files {
 		record := &domain.File{
 			DriveFileID: file.Id,
@@ -105,20 +105,26 @@ func runPipeline(
 			SyncStatus:  domain.SyncStatusPending,
 		}
 		if err := repo.Upsert(ctx, record); err != nil {
-			log.Printf("状態管理 DB への Upsert に失敗: file=%q id=%s err=%v", file.Name, file.Id, err)
+			registrationFailures++
 			continue
 		}
 		// Force reprocessing even when discovery found no content or name changes.
 		if os.Getenv("REPROCESS_ALL") == "true" {
 			if err := repo.UpdateStatus(ctx, file.Id, domain.SyncStatusPending); err != nil {
-				return fmt.Errorf("requeue file %s: %w", file.Id, err)
+				registrationFailures++
 			}
 		}
+	}
+	if registrationFailures > 0 {
+		log.Printf("ファイル登録または再処理の設定に失敗: count=%d", registrationFailures)
 	}
 
 	log.Printf("Drive ファイルを %d 件検出しました。Worker Pool を開始します。", len(files))
 	if err := etl.Run(ctx, repo, driveClient, bq); err != nil {
 		return withStage("load", fmt.Errorf("Worker Pool の実行に失敗: %w", err))
+	}
+	if registrationFailures > 0 {
+		return withStage("load", fmt.Errorf("ファイル登録または再処理の設定に %d 件失敗", registrationFailures))
 	}
 	return exportGoldReports(ctx, driveClient, bq, exportFolderID)
 }
@@ -129,7 +135,7 @@ func exportGoldReports(ctx context.Context, driveClient drive.DriveClient, bq bq
 		return nil
 	}
 	if err := goldreport.Export(ctx, driveClient, bq, exportFolderID); err != nil {
-		return withStage("load", err)
+		return withStage("export", err)
 	}
 	return nil
 }

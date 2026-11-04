@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"strings"
 	"testing"
 )
 
@@ -42,5 +43,21 @@ func TestRunMetadataDefaultsAndStage(t *testing.T) {
 	}
 	if got := stageFromError(errors.New("unavailable")); got != "startup" {
 		t.Errorf("default stage = %q, want startup", got)
+	}
+}
+
+func TestPublicRunErrorOmitsPrivateDetails(t *testing.T) {
+	private := withStage("download", errors.New("file-id secret-token private API detail"))
+	public := publicRunError(private)
+	if got := stageFromError(public); got != "download" {
+		t.Fatalf("stage = %q, want download", got)
+	}
+	for _, secret := range []string{"file-id", "secret-token", "private API detail"} {
+		if strings.Contains(public.Error(), secret) {
+			t.Errorf("public error exposes %q", secret)
+		}
+	}
+	if got := recoveredPanicError("secret-token").Error(); strings.Contains(got, "secret-token") {
+		t.Errorf("panic error exposes recovered value: %s", got)
 	}
 }

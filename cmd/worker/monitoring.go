@@ -4,7 +4,6 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
-	"fmt"
 	"os"
 
 	"github.com/getsentry/sentry-go"
@@ -100,6 +99,10 @@ func stageFromError(err error) string {
 	return "startup"
 }
 
-func recoveredPanicError(recovered any) error {
-	return withStage("startup", fmt.Errorf("予期しない panic: %v", recovered))
+func publicRunError(err error) error {
+	return withStage(stageFromError(err), errors.New("ETL の実行に失敗しました"))
+}
+
+func recoveredPanicError(_ any) error {
+	return withStage("startup", errors.New("予期しない panic"))
 }
