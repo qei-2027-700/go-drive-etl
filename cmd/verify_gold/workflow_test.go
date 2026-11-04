@@ -73,7 +73,7 @@ func TestVerificationFlow(t *testing.T) {
 					return []goldverify.CSVResult{{Table: "mart_ingestion_daily", Rows: 1, Columns: 6, Match: tc.failure != name}}, ids, call(name)
 				},
 			}
-			r := newReport(tc.mutate)
+			r := newReport(tc.mutate, false)
 			err := verify(context.Background(), &r, verificationOptions{mutate: tc.mutate}, ops)
 			if !reflect.DeepEqual(calls, tc.calls) {
 				t.Fatalf("calls %v; want %v", calls, tc.calls)
@@ -119,6 +119,39 @@ func TestVerificationFlow(t *testing.T) {
 			}
 			if tc.failure == "mismatch" && r.Stages[comparisonStage].Counts["daily_missing"] != 1 {
 				t.Fatal("SQL differences lost")
+			}
+		})
+	}
+}
+
+func TestVerificationDataOnly(t *testing.T) {
+	for _, mismatch := range []bool{false, true} {
+		t.Run(map[bool]string{false: "success", true: "mismatch"}[mismatch], func(t *testing.T) {
+			r := newReport(true, true)
+			if r.Stages[dashboardStage].Status != "not_requested" {
+				t.Fatal("dashboard stage should be skipped explicitly")
+			}
+			exports := 0
+			err := verify(context.Background(), &r, verificationOptions{mutate: true, dataOnly: true}, verificationOps{
+				refresh: func(context.Context) error { return nil },
+				compare: func(context.Context) (map[string]int64, error) {
+					counts := map[string]int64{"silver_chunks": 1, "expected_daily": 1, "actual_daily": 1, "expected_latest": 1, "actual_latest": 1}
+					if mismatch {
+						counts["daily_missing"] = 1
+					}
+					return counts, nil
+				},
+				export: func(context.Context) error { exports++; return nil },
+				check: func(context.Context, map[string]string) ([]goldverify.CSVResult, map[string]string, error) {
+					return []goldverify.CSVResult{{Table: "mart_ingestion_daily", Match: true}}, nil, nil
+				},
+			})
+			if mismatch {
+				if err == nil || r.Status != "failed" || exports != 0 {
+					t.Fatalf("mismatch must stop before export: err=%v status=%s exports=%d", err, r.Status, exports)
+				}
+			} else if err != nil || r.Status != "success" || exports != 2 {
+				t.Fatalf("data verification must complete: err=%v status=%s exports=%d", err, r.Status, exports)
 			}
 		})
 	}

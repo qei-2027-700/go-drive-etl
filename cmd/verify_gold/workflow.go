@@ -17,7 +17,7 @@ const (
 	dashboardStage
 )
 
-type verificationOptions struct{ mutate, allowEmpty bool }
+type verificationOptions struct{ mutate, allowEmpty, dataOnly bool }
 type verificationOps struct {
 	refresh func(context.Context) error
 	compare func(context.Context) (map[string]int64, error)
@@ -25,7 +25,7 @@ type verificationOps struct {
 	check   func(context.Context, map[string]string) ([]goldverify.CSVResult, map[string]string, error)
 }
 
-func newReport(mutate bool) report {
+func newReport(mutate, dataOnly bool) report {
 	r := report{Status: "failed", Stages: []stage{
 		{Name: "configuration", Status: "not_run"},
 		{Name: "refresh", Status: "not_run"},
@@ -37,6 +37,9 @@ func newReport(mutate bool) report {
 	if !mutate {
 		r.Stages[refreshStage].Status = "not_requested"
 		r.Stages[secondCSVStage].Status = "not_requested"
+	}
+	if dataOnly {
+		r.Stages[dashboardStage].Status = "not_requested"
 	}
 	return r
 }
@@ -93,5 +96,8 @@ func verify(ctx context.Context, r *report, options verificationOptions, ops ver
 		previous = ids
 	}
 	r.Status = "partial"
+	if options.dataOnly {
+		r.Status = "success"
+	}
 	return nil
 }

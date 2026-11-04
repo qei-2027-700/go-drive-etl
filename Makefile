@@ -1,4 +1,9 @@
-.PHONY: mock
+.PHONY: mock run-manual-pipeline
+
+# Keep CSV delivery after Gold refresh and verification.
+run-manual-pipeline:
+	DRIVE_EXPORT_FOLDER_ID= go run ./cmd/worker/
+	go run ./cmd/verify_gold --refresh-and-export --data-only
 
 mock:
 	mockgen -source=internal/drive/client.go \
