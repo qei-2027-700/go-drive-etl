@@ -35,7 +35,7 @@ go run ./cmd/verify_gold --refresh-and-export
 go run ./cmd/verify_gold --refresh-and-export --data-only
 ```
 
-通常の手動運用は `make run-manual-pipeline` を使う。WorkerのCSV配信を一時的に止めてETLを実行し、Gold更新・照合・CSV配信へ進む。ETLまたは検証が失敗した場合は後続の処理を実行しない。`--data-only` では画面確認を要求せず、JSONの `dashboard` 段階を `not_requested` とする。画面は別途 [画面仕様](looker-studio.md) に従って確認する。
+通常の手動運用は `make run-manual-pipeline` を使う。この実行ではWorkerからCSVを配信せずにETLを実行し、Gold更新・照合・CSV配信へ進む。ETLまたは検証が失敗した場合は後続の処理を実行しない。`--data-only` では画面確認を要求せず、JSONの `dashboard` 段階を `not_requested` とする。画面は別途 [画面仕様](looker-studio.md) に従って確認する。
 
 書込モードは `scripts/refresh_gold_marts.sh` を呼ぶ。`BQ_PROJECT_ID` と `BQ_GOLD_DATASET_ID` はWorkerの設定から子プロセスへ渡すため、別の出力先と混同しない。CSVはWorkerと検証コマンドが共有する `internal/goldreport.Export` を使う。ETLの再実行はしない。通常のCIやスキル読込から書込を実行しない。
 

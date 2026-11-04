@@ -355,7 +355,7 @@ BQ_PROJECT_ID=your-gcp-project-id \
 Portfolio v1 のデモでは、Drive の Markdown ファイルを Worker が取得し、Firestore で処理状態を管理しながらチャンク化して BigQuery へロードする。実行後に Gold Mart を更新し、CSV とデータポータルで結果を確認する。RAG の Embeddings や定期実行はこのデモに含まれない。
 
 1. セットアップ手順に従って `.env`、Drive の入力フォルダ、Firestore、BigQuery、認証を準備する。
-2. 手動パイプラインを実行する。ETL中はCSV配信を止め、Gold Martを更新・照合してからCSVを配信する。いずれかの段階が失敗した場合、後続の段階には進まない。
+2. 手動パイプラインを実行する。この実行ではWorkerからCSVを配信せず、Gold Martを更新・照合してからCSVを配信する。いずれかの段階が失敗した場合、後続の段階には進まない。
 
 ```bash
 make run-manual-pipeline
