@@ -2,7 +2,7 @@ module github.com/qei-2027-700/go-drive-etl
 
 go 1.26.5
 
-toolchain go1.26.9
+toolchain go1.26.10
 
 require (
 	cloud.google.com/go/bigquery v1.85.0
