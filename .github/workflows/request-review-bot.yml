@@ -28,12 +28,18 @@ jobs:
       JEV_MAX_DIFF_CHARACTERS: "100000"
 
     steps:
+      - name: Require human review for Dependabot PRs
+        if: github.event.pull_request.user.login == 'dependabot[bot]'
+        run: echo "::notice::Jev triage is unavailable for Dependabot PRs; human review is required."
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: github.event.pull_request.user.login != 'dependabot[bot]'
         with:
           ref: ${{ github.event.pull_request.head.sha }}
           persist-credentials: false
 
       - name: Evaluate filtered PR diff and update triage
+        if: github.event.pull_request.user.login != 'dependabot[bot]'
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
           script: |
