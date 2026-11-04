@@ -30,7 +30,12 @@ go run ./cmd/verify_gold
 
 # Gold再集計とCSV出力2回を含む実環境検証。
 go run ./cmd/verify_gold --refresh-and-export
+
+# 画面確認を別に行うデータ検証。データが一致すれば終了コード0。
+go run ./cmd/verify_gold --refresh-and-export --data-only
 ```
+
+通常の手動運用は `make run-manual-pipeline` を使う。この実行ではWorkerからCSVを配信せずにETLを実行し、Gold更新・照合・CSV配信へ進む。ETLまたは検証が失敗した場合は後続の処理を実行しない。`--data-only` では画面確認を要求せず、JSONの `dashboard` 段階を `not_requested` とする。画面は別途 [画面仕様](looker-studio.md) に従って確認する。
 
 書込モードは `scripts/refresh_gold_marts.sh` を呼ぶ。`BQ_PROJECT_ID` と `BQ_GOLD_DATASET_ID` はWorkerの設定から子プロセスへ渡すため、別の出力先と混同しない。CSVはWorkerと検証コマンドが共有する `internal/goldreport.Export` を使う。ETLの再実行はしない。通常のCIやスキル読込から書込を実行しない。
 
@@ -50,7 +55,7 @@ go run ./cmd/verify_gold --refresh-and-export
 | 画面のログイン要求 | 一部未確認。認証を迂回しない。人が開くURLと期待値を示す |
 | APIとSQLが成功 | データ側の成功。画面描画は別に確認する |
 
-直接ビルドしたバイナリの終了コードは失敗1、一部未確認2。`go run` では子プロセスの非ゼロ終了が1に包まれるため、JSONの `status` で区別する。画面はコマンドから判定しないため、データ検証が通ってもコマンド単体は `partial` になる。
+直接ビルドしたバイナリの終了コードは失敗1、画面未確認による一部未確認2。`--data-only` ではデータ検証が成功すれば0を返し、JSONの `status` は `success`、画面段階は `not_requested` になる。`go run` では子プロセスの非ゼロ終了が1に包まれるため、JSONの `status` で区別する。通常モードでは画面をコマンドから判定しないため、データ検証が通っても `partial` になる。
 
 ログイン済みブラウザで全期間を選び、`dashboard_files` と `dashboard_pending` をスコアカードと比較する。日次チャート・最新文書表も画面仕様に従って確認し、接続エラーがないことと実行日時を記録する。期間指定がある場合は同じ期間の値で比較する。書込モードが成功し、画面確認もできた場合に、担当者が全体成功を記録する。画面が見られなければ、データ側の結果を保ったまま理由とURLを残す。
 

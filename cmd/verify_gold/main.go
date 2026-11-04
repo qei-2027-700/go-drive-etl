@@ -47,6 +47,7 @@ func value(key, fallback string) string {
 func run() int {
 	mutate := flag.Bool("refresh-and-export", false, "rebuild Gold and export twice (cloud writes)")
 	empty := flag.Bool("allow-empty", false, "accept empty Silver and header-only CSVs")
+	dataOnly := flag.Bool("data-only", false, "report data verification success without dashboard review")
 	flag.Parse()
 	// Parse dotenv as data; never execute it as shell code. Existing env wins.
 	if err := godotenv.Load(); err != nil && !os.IsNotExist(err) {
@@ -58,13 +59,15 @@ func run() int {
 		fmt.Println("cannot create private log directory")
 		return 1
 	}
-	r := newReport(*mutate)
+	r := newReport(*mutate, *dataOnly)
 	r.Started = time.Now().UTC().Format(time.RFC3339)
-	r.DashboardURL = os.Getenv("GOLD_DASHBOARD_URL")
-	r.DashboardReason = "Browser rendering has not been checked. Open the report with a signed-in browser and compare the dashboard_files/dashboard_pending counts with all-date scorecards; check daily chart and latest-file table as described in docs/looker-studio.md."
-	if r.DashboardURL == "" {
-		if data, err := os.ReadFile("docs/looker-studio.md"); err == nil {
-			r.DashboardURL = regexp.MustCompile(`https://datastudio\.google\.com/[^\s]+`).FindString(string(data))
+	if !*dataOnly {
+		r.DashboardURL = os.Getenv("GOLD_DASHBOARD_URL")
+		r.DashboardReason = "Browser rendering has not been checked. Open the report with a signed-in browser and compare the dashboard_files/dashboard_pending counts with all-date scorecards; check daily chart and latest-file table as described in docs/looker-studio.md."
+		if r.DashboardURL == "" {
+			if data, err := os.ReadFile("docs/looker-studio.md"); err == nil {
+				r.DashboardURL = regexp.MustCompile(`https://datastudio\.google\.com/[^\s]+`).FindString(string(data))
+			}
 		}
 	}
 	finish := func(err error) int {
@@ -75,6 +78,8 @@ func run() int {
 			if writeErr := os.WriteFile(filepath.Join(dir, "error.txt"), []byte(err.Error()), 0600); writeErr != nil {
 				fmt.Println("cannot save private error log")
 			}
+		} else if *dataOnly {
+			code = 0
 		}
 		r.Finished = time.Now().UTC().Format(time.RFC3339)
 		data, _ := json.MarshalIndent(r, "", "  ")
@@ -174,5 +179,5 @@ func run() int {
 			return goldverify.CheckDrive(ctx, src, dest, folder, *empty, previous)
 		},
 	}
-	return finish(verify(ctx, &r, verificationOptions{mutate: *mutate, allowEmpty: *empty}, ops))
+	return finish(verify(ctx, &r, verificationOptions{mutate: *mutate, allowEmpty: *empty, dataOnly: *dataOnly}, ops))
 }

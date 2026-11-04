@@ -355,21 +355,14 @@ BQ_PROJECT_ID=your-gcp-project-id \
 Portfolio v1 のデモでは、Drive の Markdown ファイルを Worker が取得し、Firestore で処理状態を管理しながらチャンク化して BigQuery へロードする。実行後に Gold Mart を更新し、CSV とデータポータルで結果を確認する。RAG の Embeddings や定期実行はこのデモに含まれない。
 
 1. セットアップ手順に従って `.env`、Drive の入力フォルダ、Firestore、BigQuery、認証を準備する。
-2. Worker を実行する。
+2. 手動パイプラインを実行する。この実行ではWorkerからCSVを配信せず、Gold Martを更新・照合してからCSVを配信する。いずれかの段階が失敗した場合、後続の段階には進まない。
 
 ```bash
-go run ./cmd/worker/
+make run-manual-pipeline
 ```
 
-3. ログで Drive ファイルの検出と Worker Pool の完了を確認する。BigQuery の `chunks_current` に Drive ファイル由来の Markdown チャンクがあることを確認する。
-4. Gold Mart を更新する。
-
-```bash
-BQ_PROJECT_ID=your-gcp-project-id ./scripts/refresh_gold_marts.sh
-```
-
-5. `etl_gold.mart_ingestion_daily` と `etl_gold.mart_file_latest` を BigQuery で確認する。続けて Worker をもう一度実行すると、更新後の 2 つの Mart の CSV が `DRIVE_EXPORT_FOLDER_ID` の Drive フォルダに作成・更新される。
-6. [docs/looker-studio.md](docs/looker-studio.md) の手順で `Ingestion health` ダッシュボードを開き、ファイル数・未埋め込みチャンク数・日次推移・最新ファイル一覧を確認する。
+3. ログで Drive ファイルの検出と Worker Pool の完了を確認する。BigQuery の `chunks_current` に Drive ファイル由来の Markdown チャンクがあることを確認する。検証結果のJSONでGold MartとDrive上の2つのCSVの一致を確認する。
+4. [docs/looker-studio.md](docs/looker-studio.md) の手順で `Ingestion health` ダッシュボードを開き、ファイル数・未埋め込みチャンク数・日次推移・最新ファイル一覧を確認する。`--data-only` は画面を検証しない。
 
 `go run ./cmd/verify_drive/` は Drive → 状態管理 DB → BigQuery の基本疎通確認用であり、Markdown チャンク化や Gold Mart の更新を行う Worker デモとは異なる。
 
