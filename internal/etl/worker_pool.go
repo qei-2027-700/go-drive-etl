@@ -9,6 +9,7 @@ import (
 	"log"
 	"os"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"cloud.google.com/go/bigquery"
@@ -65,6 +66,16 @@ func Run(
 	}
 
 	jobs := make(chan *domain.File, 100)
+	var failedFiles atomic.Int64
+	var failedStatusUpdates atomic.Int64
+	markFailed := func(file *domain.File, stage string) {
+		failedFiles.Add(1)
+		log.Printf("file processing failed: stage=%s", stage)
+		if err := repo.UpdateStatus(ctx, file.DriveFileID, domain.SyncStatusFailed); err != nil {
+			failedStatusUpdates.Add(1)
+			log.Printf("file status update failed: stage=%s", stage)
+		}
+	}
 
 	var wg sync.WaitGroup
 	for i := 0; i < 5; i++ {
@@ -98,11 +109,7 @@ func Run(
 							return
 						}
 
-						log.Printf("DownloadFile failed: fileID=%s err=%v", file.DriveFileID, err)
-
-						if statusErr := repo.UpdateStatus(ctx, file.DriveFileID, domain.SyncStatusFailed); statusErr != nil {
-							log.Printf("UpdateStatus failed: fileID=%s err=%v", file.DriveFileID, statusErr)
-						}
+						markFailed(file, "download")
 						continue
 					}
 
@@ -111,10 +118,7 @@ func Run(
 						period := sprintPolicy.Period(label)
 						chunks, err := markdownParser.Parse(bytes.NewReader(content))
 						if err != nil {
-							log.Printf("Markdown parse failed: fileID=%s err=%v", file.DriveFileID, err)
-							if statusErr := repo.UpdateStatus(ctx, file.DriveFileID, domain.SyncStatusFailed); statusErr != nil {
-								log.Printf("UpdateStatus failed: fileID=%s err=%v", file.DriveFileID, statusErr)
-							}
+							markFailed(file, "parse")
 							continue
 						}
 
@@ -181,11 +185,7 @@ func Run(
 							if ctx.Err() != nil {
 								return
 							}
-							log.Printf("BigQuery chunks InsertRows failed: fileID=%s err=%v", file.DriveFileID, err)
-							if statusErr := repo.UpdateStatus(ctx, file.DriveFileID,
-								domain.SyncStatusFailed); statusErr != nil {
-								log.Printf("UpdateStatus failed: fileID=%s err=%v", file.DriveFileID, statusErr)
-							}
+							markFailed(file, "chunks_load")
 							continue
 						}
 					}
@@ -208,15 +208,14 @@ func Run(
 							return
 						}
 
-						log.Printf("BigQuery InsertRows failed: fileID=%s err=%v", file.DriveFileID, err)
-						if statusErr := repo.UpdateStatus(ctx, file.DriveFileID, domain.SyncStatusFailed); statusErr != nil {
-							log.Printf("UpdateStatus failed: fileID=%s err=%v", file.DriveFileID, statusErr)
-						}
+						markFailed(file, "metadata_load")
 						continue
 					}
 
 					if err := repo.UpdateStatus(ctx, file.DriveFileID, domain.SyncStatusDone); err != nil {
-						log.Printf("UpdateStatus failed: fileID=%s err=%v", file.DriveFileID, err)
+						failedFiles.Add(1)
+						failedStatusUpdates.Add(1)
+						log.Print("file status update failed: stage=done")
 					}
 
 				case <-ctx.Done():
@@ -238,6 +237,13 @@ func Run(
 	close(jobs)
 
 	wg.Wait()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if failed := failedFiles.Load(); failed > 0 {
+		log.Printf("file processing completed with failures: files=%d status_updates=%d", failed, failedStatusUpdates.Load())
+		return fmt.Errorf("file processing failed: files=%d status_updates=%d", failed, failedStatusUpdates.Load())
+	}
 	return nil
 }
 
@@ -262,7 +268,7 @@ func insertRowsWithRetry(
 			return nil
 		}
 		if !isRetryableBigQueryError(lastErr) {
-			log.Printf("BigQuery Load Job failed without retry: table=%s attempts=%d err=%v", table, attempt, lastErr)
+			log.Printf("BigQuery Load Job failed without retry: table=%s attempts=%d", table, attempt)
 			return lastErr
 		}
 		if attempt == bigQueryLoadMaxAttempts {
@@ -271,24 +277,22 @@ func insertRowsWithRetry(
 
 		delay := bigQueryLoadInitialDelay * time.Duration(1<<(attempt-1))
 		log.Printf(
-			"BigQuery Load Job retrying: table=%s retry=%d/%d wait=%s err=%v",
+			"BigQuery Load Job retrying: table=%s retry=%d/%d wait=%s",
 			table,
 			attempt,
 			bigQueryLoadMaxAttempts-1,
 			delay,
-			lastErr,
 		)
 		if err := waitForBigQueryRetry(ctx, delay); err != nil {
-			log.Printf("BigQuery Load Job retry interrupted: table=%s retries=%d err=%v", table, attempt, err)
+			log.Printf("BigQuery Load Job retry interrupted: table=%s retries=%d", table, attempt)
 			return err
 		}
 	}
 
 	log.Printf(
-		"BigQuery Load Job failed after retries: table=%s attempts=%d err=%v",
+		"BigQuery Load Job failed after retries: table=%s attempts=%d",
 		table,
 		bigQueryLoadMaxAttempts,
-		lastErr,
 	)
 	return lastErr
 }

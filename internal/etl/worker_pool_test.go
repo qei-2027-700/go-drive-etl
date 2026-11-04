@@ -1,10 +1,12 @@
 package etl
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"errors"
 	"fmt"
+	"log"
 	"strings"
 	"testing"
 	"time"
@@ -38,6 +40,72 @@ func TestRun_Success(t *testing.T) {
 	err := Run(ctx, repo, driveClient, bqClient)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestRun_ContinuesOtherFilesAndReportsPartialFailure(t *testing.T) {
+	var logs bytes.Buffer
+	previousLogOutput := log.Writer()
+	log.SetOutput(&logs)
+	t.Cleanup(func() { log.SetOutput(previousLogOutput) })
+
+	ctrl := gomock.NewController(t)
+	repo := repoMock.NewMockFileRepo(ctrl)
+	driveClient := driveMock.NewMockDriveClient(ctrl)
+	bqClient := bqMock.NewMockBQClient(ctrl)
+
+	repo.EXPECT().ListPending(gomock.Any()).Return([]*domain.File{
+		{DriveFileID: "failed-file"},
+		{DriveFileID: "successful-file"},
+	}, nil)
+	driveClient.EXPECT().DownloadFile(gomock.Any(), "failed-file").Return(nil, errors.New("private API detail"))
+	driveClient.EXPECT().DownloadFile(gomock.Any(), "successful-file").Return([]byte("data"), nil)
+	bqClient.EXPECT().InsertRows(gomock.Any(), "drive_files", gomock.Any()).Return(nil)
+	repo.EXPECT().UpdateStatus(gomock.Any(), "failed-file", domain.SyncStatusFailed).Return(nil)
+	repo.EXPECT().UpdateStatus(gomock.Any(), "successful-file", domain.SyncStatusDone).Return(nil)
+
+	err := Run(context.Background(), repo, driveClient, bqClient)
+	if err == nil || !strings.Contains(err.Error(), "files=1") {
+		t.Fatalf("Run() error = %v, want one failed file", err)
+	}
+	for _, private := range []string{"failed-file", "successful-file", "private API detail"} {
+		if strings.Contains(err.Error(), private) || strings.Contains(logs.String(), private) {
+			t.Errorf("Run() result or logs expose %q", private)
+		}
+	}
+}
+
+func TestRun_ReportsCancellationWithNoPendingFiles(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	repo := repoMock.NewMockFileRepo(ctrl)
+	repo.EXPECT().ListPending(gomock.Any()).Return(nil, nil)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	if err := Run(ctx, repo, nil, nil); !errors.Is(err, context.Canceled) {
+		t.Fatalf("Run() error = %v, want context.Canceled", err)
+	}
+}
+
+func TestRun_ReportsStatusUpdateFailure(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	repo := repoMock.NewMockFileRepo(ctrl)
+	driveClient := driveMock.NewMockDriveClient(ctrl)
+	bqClient := bqMock.NewMockBQClient(ctrl)
+	file := &domain.File{DriveFileID: "file-id"}
+
+	repo.EXPECT().ListPending(gomock.Any()).Return([]*domain.File{file}, nil)
+	driveClient.EXPECT().DownloadFile(gomock.Any(), file.DriveFileID).Return([]byte("data"), nil)
+	bqClient.EXPECT().InsertRows(gomock.Any(), "drive_files", gomock.Any()).Return(nil)
+	repo.EXPECT().UpdateStatus(gomock.Any(), file.DriveFileID, domain.SyncStatusDone).
+		Return(errors.New("private backend detail"))
+
+	err := Run(context.Background(), repo, driveClient, bqClient)
+	if err == nil || !strings.Contains(err.Error(), "status_updates=1") {
+		t.Fatalf("Run() error = %v, want status update failure", err)
+	}
+	if strings.Contains(err.Error(), "file-id") || strings.Contains(err.Error(), "private backend detail") {
+		t.Errorf("Run() error exposes private details: %v", err)
 	}
 }
 
@@ -145,8 +213,8 @@ func TestRun_MarkdownChunkInsertFailureMarksFileFailed(t *testing.T) {
 	bqClient.EXPECT().InsertRows(gomock.Any(), "chunks", gomock.Any()).Return(errors.New("BigQuery error"))
 	repo.EXPECT().UpdateStatus(gomock.Any(), file.DriveFileID, domain.SyncStatusFailed).Return(nil)
 
-	if err := Run(context.Background(), repo, driveClient, bqClient); err != nil {
-		t.Fatalf("Run() error = %v", err)
+	if err := Run(context.Background(), repo, driveClient, bqClient); err == nil {
+		t.Fatal("Run() succeeded after a chunk load failure")
 	}
 }
 
@@ -203,8 +271,8 @@ func TestRun_DoesNotRetryNonRetryableBigQueryError(t *testing.T) {
 		Return(&googleapi.Error{Code: 400, Message: "Bad Request"})
 	repo.EXPECT().UpdateStatus(gomock.Any(), file.DriveFileID, domain.SyncStatusFailed).Return(nil)
 
-	if err := Run(context.Background(), repo, driveClient, bqClient); err != nil {
-		t.Fatalf("Run() error = %v", err)
+	if err := Run(context.Background(), repo, driveClient, bqClient); err == nil {
+		t.Fatal("Run() succeeded after a non-retryable load failure")
 	}
 }
 
@@ -227,8 +295,8 @@ func TestRun_MarksFailedAfterTransientRetriesAreExhausted(t *testing.T) {
 		Return(&googleapi.Error{Code: 503, Message: "Service Unavailable"})
 	repo.EXPECT().UpdateStatus(gomock.Any(), file.DriveFileID, domain.SyncStatusFailed).Return(nil)
 
-	if err := Run(context.Background(), repo, driveClient, bqClient); err != nil {
-		t.Fatalf("Run() error = %v", err)
+	if err := Run(context.Background(), repo, driveClient, bqClient); err == nil {
+		t.Fatal("Run() succeeded after retries were exhausted")
 	}
 }
 
@@ -247,8 +315,8 @@ func TestRun_DoesNotRetryDriveFilesLoad(t *testing.T) {
 		Return(&googleapi.Error{Code: 503, Message: "Service Unavailable"})
 	repo.EXPECT().UpdateStatus(gomock.Any(), file.DriveFileID, domain.SyncStatusFailed).Return(nil)
 
-	if err := Run(context.Background(), repo, driveClient, bqClient); err != nil {
-		t.Fatalf("Run() error = %v", err)
+	if err := Run(context.Background(), repo, driveClient, bqClient); err == nil {
+		t.Fatal("Run() succeeded after a metadata load failure")
 	}
 }
 
@@ -368,8 +436,8 @@ func TestRun_LoadFile_Failed(t *testing.T) {
 	bqClient.EXPECT().InsertRows(gomock.Any(), "drive_files", gomock.Any()).Return(errors.New("BigQuery error"))
 	repo.EXPECT().UpdateStatus(gomock.Any(), file.DriveFileID, domain.SyncStatusFailed).Return(nil)
 
-	if err := Run(context.Background(), repo, driveClient, bqClient); err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	if err := Run(context.Background(), repo, driveClient, bqClient); err == nil {
+		t.Fatal("Run() succeeded after a metadata load failure")
 	}
 }
 
@@ -398,11 +466,14 @@ func TestRun_DownloadFile_Failed(t *testing.T) {
 
 	repo.EXPECT().
 		UpdateStatus(gomock.Any(), "test-drive-id", domain.SyncStatusFailed).
-		Return(nil)
+		Return(errors.New("private state error"))
 
 	err := Run(ctx, repo, driveClient, bqClient)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	if err == nil || !strings.Contains(err.Error(), "status_updates=1") {
+		t.Fatalf("Run() error = %v, want status update failure", err)
+	}
+	if strings.Contains(err.Error(), "private state error") {
+		t.Errorf("Run() error exposes private state error: %v", err)
 	}
 }
 

@@ -2,7 +2,7 @@
 
 Go の並行処理 + GCP (BigQuery) + Protocol Buffers で構成した、バッチ ETL データパイプライン。
 
-Google Drive の Markdown ファイルを回収し、チャンク化して BigQuery へロードする。Gold Mart の集計結果は CSV として Drive へ書き戻し、データポータルで可視化する。文書単位の Gold View は別アプリ向けに本文と出典を提供する。定期実行は #141 で検討する。
+Google Drive の Markdown ファイルを回収し、チャンク化して BigQuery へロードする。Gold Mart の集計結果は CSV として Drive へ書き戻し、データポータルで可視化する。文書単位の Gold View は別アプリ向けに本文と出典を提供する。定期実行は未導入で、#141 に検討記録を残している。
 
 [![CI](https://github.com/qei-2027-700/go-drive-etl/actions/workflows/ci.yml/badge.svg)](https://github.com/qei-2027-700/go-drive-etl/actions/workflows/ci.yml)
 [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/qei-2027-700/go-drive-etl/badge)](https://securityscorecards.dev/viewer/?uri=github.com/qei-2027-700/go-drive-etl)
@@ -210,7 +210,7 @@ cp .env.example .env
 
 #### Drive API: サービスアカウントの準備
 
-Drive API は OAuth2 のユーザー委譲ではなく、サービスアカウントで認証する。OAuth ユーザー委譲は、同意画面が「テスト中」ステータスの間リフレッシュトークンが 7 日で失効し、常時稼働に向かないため採用していない（経緯は [Issue #73](https://github.com/qei-2027-700/go-drive-etl/issues/73) を参照）。
+入力フォルダの読み取りにはサービスアカウントを利用できる。OAuth の3設定がそろっている場合は Drive クライアント全体でユーザー認証を優先するため、マイドライブへの CSV 配信にはこちらを使う。OAuth 同意画面が「テスト中」の間はリフレッシュトークンが7日で失効する点に注意する（経緯は [Issue #73](https://github.com/qei-2027-700/go-drive-etl/issues/73) を参照）。
 
 1. GCP コンソールでサービスアカウントを作成する（例: `etl-worker`）
 2. 「キー」タブから JSON キーを作成してダウンロードする。**JSON キーはパスワード同等の機密情報なので、リポジトリ外に保存し `.gitignore` で除外すること**
@@ -451,19 +451,19 @@ go-drive-etl/
 
 ## ロードマップ
 
-2026年10月末は、このリポジトリをETL / BIのポートフォリオとして仕上げ、動作・設計・制約を自分の言葉で説明できることを目標にする。別repoの `retrosprint-rag` はNuxt 4のフロントエンドとFastAPIのバックエンドを一体で開発し、完成前でも処理と構成を見せられる中間デモを目指す。約40%は月末の進み具合の目安であり、現在の実装率や測定済みの進捗ではない。アプリは11月以降も開発を続ける。
+ETL / BI の Portfolio v1 は実装済みである。今後は不具合修正、技術的負債と文書の整理、デモの再現性を優先し、新しい機能は必要性を確認してから追加する。RAGアプリは別repo `retrosprint-rag` で管理する。
 
 | 対象 | 現状・次の作業 |
 |:---|:---|
-| ETL / BI | Markdown取得・加工・Raw保存・Silver / Gold・CSV配信・BIは実装済み。再現手順と口頭説明を仕上げる |
+| ETL / BI | Markdown取得・加工・Raw保存・Silver / Gold・CSV配信・BIは実装済み。一部失敗の成功判定は #159 で修正し、デモの再現性を保つ |
 | 文書提供 | Gold Viewと専用SAでの月検索・権限検証は完了。別アプリ実行基盤との接続は未検証 |
-| 正確な対象期間 | #133。年月ラベルによる検索は実装済み。正確な期間の抽出・検索は後続 |
-| dbt | #140。Gold Mart 2テーブルを別datasetで試し、採用を判断する。全面移行は未決定 |
-| 定期実行 | #141。GitHub Actionsによる週次実行の認証・順序・運用を検討する。scheduleは未導入 |
-| 別repoのRAGアプリ | #139。Nuxt 4 + FastAPI / AWSで開発する計画。ETLとの接続方式は未決定 |
+| 正確な対象期間 | #133。年月ラベルによる検索は実装済み。正確な期間の検索が必要になった場合に判断する |
+| dbt | #140。試験導入は現時点で着手しない |
+| 定期実行 | #141・#160・#161。週次実行は現時点で着手せず、手動運用を続ける |
+| 別repoのRAGアプリ | #139。ETLとの接続方式は未決定。アプリの実装状況はこのrepoからは未確認 |
 | このrepoでのGCP版RAG | #23・#36〜#39は今回は見送り、理由を残してクローズする。将来の別構成として再開可能。既存要件・未コミット実装は保持する |
 
-GCP版RAGの実装完了や、別repoのアプリによる恒久的な置き換えを意味しない。再開時はIssueを再オープンするか、元のIssueへリンクした再計画を行う。月末の目標と検証済みの範囲は [進捗管理](docs/progress.md) に記録する。
+GCP版RAGの実装完了や、別repoのアプリによる恒久的な置き換えを意味しない。再開時はIssueを再オープンするか、元のIssueへリンクした再計画を行う。現在の方針と検証済みの範囲は [進捗管理](docs/progress.md) に記録する。
 
 ---
 

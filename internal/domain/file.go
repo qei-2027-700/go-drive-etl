@@ -19,19 +19,3 @@ type File struct {
 	SyncStatus  SyncStatus
 	UpdatedAt   time.Time
 }
-
-// TODO: Issue #63 で File.ID を廃止したため、FileID は Phase 2 で DriveFileID string に置き換える
-type Chunk struct {
-	ID              int64
-	FileID          int64
-	ChunkIndex      int
-	Content         string
-	EmbeddingStatus string
-}
-
-type Job struct {
-	ID         int64
-	Status     string
-	RetryCount int
-	StartedAt  time.Time
-}
